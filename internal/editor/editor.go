@@ -30,7 +30,7 @@ type Buffer struct {
 // including multi-byte characters like emojis or accented letters.
 func (e *Editor) Insert(r rune) {
 	// Convert current line to rune slice
-	line := []rune(e.buffer.lines[e.cursor.Line])
+	var line []rune = e.lineToRuneSlice(e.cursor.Line)
 
 	// Split the line at the cursor position
 	leftSide := line[:e.cursor.Column]  // Left side of cursor
@@ -55,11 +55,6 @@ func (e *Editor) Insert(r rune) {
 //
 // If the cursor is at the beginning of the entire buffer (line 0, column 0),
 // nothing should happen.
-//
-// Example:
-//   - Before: line = "Hello", cursor at column 3 (after 'e')
-//   - Backspace() removes 'e'
-//   - After:  "Hllo", cursor at column 2
 func (e *Editor) Backspace() {
 	// TODO: Implement
 }
@@ -181,7 +176,7 @@ func (e *Editor) MoveDown() {
 //  4. Move cursor to the beginning of the new line (column 0)
 func (e *Editor) Enter() {
 	// Convert current line to rune slice
-	line := []rune(e.buffer.lines[e.cursor.Line])
+	var line []rune = e.lineToRuneSlice(e.cursor.Line)
 
 	// Split the line at the cursor position
 	leftSide := string(line[:e.cursor.Column])  // Text before cursor
@@ -207,4 +202,12 @@ func (e *Editor) getLineLength(lineNum int) int {
 	}
 
 	return len([]rune(e.buffer.lines[lineNum]))
+}
+
+// lineToRuneSlice converts given line to rune slice.
+// Since buffer is a string, and strings are immutable,
+// this is required to modify the buffer.
+func (e *Editor) lineToRuneSlice(lineNum int) []rune {
+	slice := []rune(e.buffer.lines[lineNum])
+	return slice
 }
