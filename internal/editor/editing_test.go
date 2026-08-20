@@ -1,195 +1,310 @@
 package editor
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/i-walk-away/daun/internal/buffer"
+)
 
 func TestEditorInsert(t *testing.T) {
-	buffer := NewBuffer()
-	buffer.SetLine(0, "hello")
+	b := buffer.NewBuffer()
+	e := NewEditor(b)
 
-	editor := NewEditor(buffer)
-	editor.cursor.Column = 2
+	e.Insert('h')
+	e.Insert('i')
 
-	editor.Insert('X')
-
-	if got := buffer.Line(0); got != "heXllo" {
-		t.Errorf("expected line %q, got %q", "heXllo", got)
+	if got := e.Line(0); got != "hi" {
+		t.Fatalf("expected %q, got %q", "hi", got)
 	}
 
-	if editor.cursor.Column != 3 {
-		t.Errorf("expected cursor column %d, got %d", 3, editor.cursor.Column)
+	if got := e.Cursor(); got != (Position{Line: 0, Column: 2}) {
+		t.Fatalf("expected cursor %+v, got %+v", Position{Line: 0, Column: 2}, got)
+	}
+}
+
+func TestEditorInsertInMiddle(t *testing.T) {
+	b := buffer.NewBuffer()
+
+	for _, r := range "helo" {
+		b.Insert(0, b.LineLength(0), r)
+	}
+
+	e := NewEditor(b)
+
+	// Move between 'e' and 'l'.
+	e.MoveRight()
+	e.MoveRight()
+
+	e.Insert('l')
+
+	if got := e.Line(0); got != "hello" {
+		t.Fatalf("expected %q, got %q", "hello", got)
+	}
+
+	if got := e.Cursor(); got != (Position{Line: 0, Column: 3}) {
+		t.Fatalf("expected cursor %+v, got %+v", Position{Line: 0, Column: 3}, got)
 	}
 }
 
 func TestEditorInsertUnicode(t *testing.T) {
-	buffer := NewBuffer()
-	buffer.SetLine(0, "привет")
+	b := buffer.NewBuffer()
+	e := NewEditor(b)
 
-	editor := NewEditor(buffer)
-	editor.cursor.Column = 3
+	e.Insert('П')
+	e.Insert('р')
+	e.Insert('и')
+	e.Insert('в')
+	e.Insert('е')
+	e.Insert('т')
 
-	editor.Insert('🚀')
-
-	if got := buffer.Line(0); got != "при🚀вет" {
-		t.Errorf("expected line %q, got %q", "при🚀вет", got)
+	if got := e.Line(0); got != "Привет" {
+		t.Fatalf("expected %q, got %q", "Привет", got)
 	}
 
-	if editor.cursor.Column != 4 {
-		t.Errorf("expected cursor column %d, got %d", 4, editor.cursor.Column)
+	if got := e.Cursor().Column; got != 6 {
+		t.Fatalf("expected cursor column 6, got %d", got)
 	}
 }
 
 func TestEditorBackspace(t *testing.T) {
-	buffer := NewBuffer()
-	buffer.SetLine(0, "hello")
+	b := buffer.NewBuffer()
+	e := NewEditor(b)
 
-	editor := NewEditor(buffer)
-	editor.cursor.Column = 3
-
-	editor.Backspace()
-
-	if got := buffer.Line(0); got != "helo" {
-		t.Errorf("expected line %q, got %q", "helo", got)
+	for _, r := range "hello" {
+		e.Insert(r)
 	}
 
-	if editor.cursor.Column != 2 {
-		t.Errorf("expected cursor column %d, got %d", 2, editor.cursor.Column)
+	e.Backspace()
+
+	if got := e.Line(0); got != "hell" {
+		t.Fatalf("expected %q, got %q", "hell", got)
+	}
+
+	if got := e.Cursor().Column; got != 4 {
+		t.Fatalf("expected cursor column 4, got %d", got)
 	}
 }
 
 func TestEditorBackspaceAtLineStart(t *testing.T) {
-	buffer := NewBuffer()
-	buffer.SetLine(0, "hello")
-	buffer.InsertLine(1, "world")
+	b := buffer.NewBuffer()
 
-	editor := NewEditor(buffer)
-	editor.cursor.Line = 1
-	editor.cursor.Column = 0
-
-	editor.Backspace()
-
-	if buffer.LineCount() != 1 {
-		t.Errorf("expected %d line, got %d", 1, buffer.LineCount())
+	for _, r := range "hello" {
+		b.Insert(0, b.LineLength(0), r)
 	}
 
-	if got := buffer.Line(0); got != "helloworld" {
-		t.Errorf("expected line %q, got %q", "helloworld", got)
+	b.InsertLine(1)
+
+	for _, r := range "world" {
+		b.Insert(1, b.LineLength(1), r)
 	}
 
-	if editor.cursor.Line != 0 {
-		t.Errorf("expected cursor line %d, got %d", 0, editor.cursor.Line)
+	e := NewEditor(b)
+
+	// Move cursor to the beginning of the second line.
+	e.MoveDown()
+
+	e.Backspace()
+
+	if got := e.LineCount(); got != 1 {
+		t.Fatalf("expected 1 line, got %d", got)
 	}
 
-	if editor.cursor.Column != 10 {
-		t.Errorf("expected cursor column %d, got %d", 10, editor.cursor.Column)
+	if got := e.Line(0); got != "helloworld" {
+		t.Fatalf("expected %q, got %q", "helloworld", got)
+	}
+
+	if got := e.Cursor(); got != (Position{Line: 0, Column: 5}) {
+		t.Fatalf("expected cursor %+v, got %+v", Position{Line: 0, Column: 5}, got)
 	}
 }
 
 func TestEditorBackspaceAtBufferStart(t *testing.T) {
-	buffer := NewBuffer()
-	buffer.SetLine(0, "hello")
+	b := buffer.NewBuffer()
+	e := NewEditor(b)
 
-	editor := NewEditor(buffer)
+	e.Backspace()
 
-	editor.Backspace()
-
-	if got := buffer.Line(0); got != "hello" {
-		t.Errorf("expected line %q, got %q", "hello", got)
+	if got := e.Line(0); got != "" {
+		t.Fatalf("expected empty line, got %q", got)
 	}
 
-	if editor.cursor.Line != 0 || editor.cursor.Column != 0 {
-		t.Errorf(
-			"expected cursor at (0, 0), got (%d, %d)",
-			editor.cursor.Line,
-			editor.cursor.Column,
-		)
+	if got := e.Cursor(); got != (Position{Line: 0, Column: 0}) {
+		t.Fatalf("expected cursor %+v, got %+v", Position{Line: 0, Column: 0}, got)
 	}
 }
 
 func TestEditorEnter(t *testing.T) {
-	buffer := NewBuffer()
-	buffer.SetLine(0, "hello world")
+	b := buffer.NewBuffer()
+	e := NewEditor(b)
 
-	editor := NewEditor(buffer)
-	editor.cursor.Column = 5
-
-	editor.Enter()
-
-	if buffer.LineCount() != 2 {
-		t.Errorf("expected %d lines, got %d", 2, buffer.LineCount())
+	for _, r := range "hello world" {
+		e.Insert(r)
 	}
 
-	if got := buffer.Line(0); got != "hello" {
-		t.Errorf("expected first line %q, got %q", "hello", got)
+	e.Cursor()
+
+	// Move cursor between "hello" and " world".
+	for i := 0; i < 6; i++ {
+		e.MoveLeft()
 	}
 
-	if got := buffer.Line(1); got != " world" {
-		t.Errorf("expected second line %q, got %q", " world", got)
+	e.Enter()
+
+	if got := e.LineCount(); got != 2 {
+		t.Fatalf("expected 2 lines, got %d", got)
 	}
 
-	if editor.cursor.Line != 1 {
-		t.Errorf("expected cursor line %d, got %d", 1, editor.cursor.Line)
+	if got := e.Line(0); got != "hello" {
+		t.Fatalf("expected first line %q, got %q", "hello", got)
 	}
 
-	if editor.cursor.Column != 0 {
-		t.Errorf("expected cursor column %d, got %d", 0, editor.cursor.Column)
+	if got := e.Line(1); got != " world" {
+		t.Fatalf("expected second line %q, got %q", " world", got)
+	}
+
+	if got := e.Cursor(); got != (Position{Line: 1, Column: 0}) {
+		t.Fatalf("expected cursor %+v, got %+v", Position{Line: 1, Column: 0}, got)
 	}
 }
 
 func TestEditorEnterAtLineStart(t *testing.T) {
-	buffer := NewBuffer()
-	buffer.SetLine(0, "hello")
+	b := buffer.NewBuffer()
+	e := NewEditor(b)
 
-	editor := NewEditor(buffer)
-
-	editor.Enter()
-
-	if buffer.LineCount() != 2 {
-		t.Errorf("expected %d lines, got %d", 2, buffer.LineCount())
+	for _, r := range "hello" {
+		e.Insert(r)
 	}
 
-	if got := buffer.Line(0); got != "" {
-		t.Errorf("expected first line %q, got %q", "", got)
+	e.MoveLeft()
+	e.MoveLeft()
+	e.MoveLeft()
+	e.MoveLeft()
+	e.MoveLeft()
+
+	e.Enter()
+
+	if got := e.Line(0); got != "" {
+		t.Fatalf("expected first line empty, got %q", got)
 	}
 
-	if got := buffer.Line(1); got != "hello" {
-		t.Errorf("expected second line %q, got %q", "hello", got)
+	if got := e.Line(1); got != "hello" {
+		t.Fatalf("expected second line %q, got %q", "hello", got)
 	}
 
-	if editor.cursor.Line != 1 || editor.cursor.Column != 0 {
-		t.Errorf(
-			"expected cursor at (1, 0), got (%d, %d)",
-			editor.cursor.Line,
-			editor.cursor.Column,
-		)
+	if got := e.Cursor(); got != (Position{Line: 1, Column: 0}) {
+		t.Fatalf("expected cursor %+v, got %+v", Position{Line: 1, Column: 0}, got)
 	}
 }
 
 func TestEditorEnterAtLineEnd(t *testing.T) {
-	buffer := NewBuffer()
-	buffer.SetLine(0, "hello")
+	b := buffer.NewBuffer()
+	e := NewEditor(b)
 
-	editor := NewEditor(buffer)
-	editor.cursor.Column = 5
-
-	editor.Enter()
-
-	if buffer.LineCount() != 2 {
-		t.Errorf("expected %d lines, got %d", 2, buffer.LineCount())
+	for _, r := range "hello" {
+		e.Insert(r)
 	}
 
-	if got := buffer.Line(0); got != "hello" {
-		t.Errorf("expected first line %q, got %q", "hello", got)
+	e.Enter()
+
+	if got := e.Line(0); got != "hello" {
+		t.Fatalf("expected first line %q, got %q", "hello", got)
 	}
 
-	if got := buffer.Line(1); got != "" {
-		t.Errorf("expected second line %q, got %q", "", got)
+	if got := e.Line(1); got != "" {
+		t.Fatalf("expected second line empty, got %q", got)
 	}
 
-	if editor.cursor.Line != 1 || editor.cursor.Column != 0 {
-		t.Errorf(
-			"expected cursor at (1, 0), got (%d, %d)",
-			1,
-			0,
+	if got := e.Cursor(); got != (Position{Line: 1, Column: 0}) {
+		t.Fatalf("expected cursor %+v, got %+v", Position{Line: 1, Column: 0}, got)
+	}
+}
+
+func TestEditorDeleteWordBackwards(t *testing.T) {
+	b := buffer.NewBuffer()
+	e := NewEditor(b)
+
+	for _, r := range "hello beautiful world" {
+		e.Insert(r)
+	}
+
+	// Cursor is at the end of the line.
+	e.DeleteWordBackwards()
+
+	if got := e.Line(0); got != "hello beautiful " {
+		t.Fatalf("expected %q, got %q", "hello beautiful ", got)
+	}
+
+	if got := e.Cursor().Column; got != len([]rune("hello beautiful ")) {
+		t.Fatalf(
+			"expected cursor column %d, got %d",
+			len([]rune("hello beautiful ")),
+			e.Cursor().Column,
 		)
+	}
+}
+
+func TestEditorDeleteWordBackwardsFromWhitespace(t *testing.T) {
+	b := buffer.NewBuffer()
+	e := NewEditor(b)
+
+	for _, r := range "hello   beautiful" {
+		e.Insert(r)
+	}
+
+	// Move cursor to the end of the whitespace before "beautiful".
+	for i := 0; i < len([]rune("beautiful")); i++ {
+		e.MoveLeft()
+	}
+
+	e.DeleteWordBackwards()
+
+	if got := e.Line(0); got != "beautiful" {
+		t.Fatalf("expected %q, got %q", "beautiful", got)
+	}
+}
+
+func TestEditorDeleteWordBackwardsAtStartOfLine(t *testing.T) {
+	b := buffer.NewBuffer()
+
+	for _, r := range "hello" {
+		b.Insert(0, b.LineLength(0), r)
+	}
+
+	b.InsertLine(1)
+
+	for _, r := range "world" {
+		b.Insert(1, b.LineLength(1), r)
+	}
+
+	e := NewEditor(b)
+	e.MoveDown()
+
+	e.DeleteWordBackwards()
+
+	if got := e.LineCount(); got != 1 {
+		t.Fatalf("expected 1 line, got %d", got)
+	}
+
+	if got := e.Line(0); got != "helloworld" {
+		t.Fatalf("expected %q, got %q", "helloworld", got)
+	}
+
+	if got := e.Cursor(); got != (Position{Line: 0, Column: 5}) {
+		t.Fatalf("expected cursor %+v, got %+v", Position{Line: 0, Column: 5}, got)
+	}
+}
+
+func TestEditorDeleteWordBackwardsAtBufferStart(t *testing.T) {
+	b := buffer.NewBuffer()
+	e := NewEditor(b)
+
+	e.DeleteWordBackwards()
+
+	if got := e.Line(0); got != "" {
+		t.Fatalf("expected empty line, got %q", got)
+	}
+
+	if got := e.Cursor(); got != (Position{Line: 0, Column: 0}) {
+		t.Fatalf("expected cursor %+v, got %+v", Position{Line: 0, Column: 0}, got)
 	}
 }
