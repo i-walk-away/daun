@@ -14,13 +14,6 @@ type Position struct {
 	Column int // Current column position (0 = first character)
 }
 
-// Buffer holds the text content of the editor.
-// The text is stored as a slice of strings, where each string represents
-// a single line. This is a simple but effective approach for small to medium files.
-type Buffer struct {
-	lines []string // Each element is one line of text
-}
-
 // Insert inserts a rune at the current caret position.
 //
 // Parameters:
@@ -43,7 +36,7 @@ func (e *Editor) Insert(r rune) {
 	updated = append(updated, rightSide...) // Add right side
 
 	// Convert back to string and store in buffer
-	e.buffer.lines[e.cursor.Line] = string(updated)
+	e.buffer.SetLine(e.cursor.Line, string(updated))
 	// Move cursor to after the inserted character
 	e.cursor.Column++
 }
@@ -65,14 +58,13 @@ func (e *Editor) Backspace() {
 	// If cursor at the beginning of a line (not first line)
 	if e.cursor.Column == 0 {
 		// Get current line
-		currentLine := e.buffer.lines[e.cursor.Line]
+		currentLine := e.buffer.Line(e.cursor.Line)
 		// Merge with previous line
-		prevLine := e.buffer.lines[e.cursor.Line-1]
-		e.buffer.lines[e.cursor.Line-1] = prevLine + currentLine
+		prevLine := e.buffer.Line(e.cursor.Line - 1)
+		e.buffer.SetLine(e.cursor.Line-1, prevLine+currentLine)
 
 		// Remove current line
-		e.buffer.lines = append(e.buffer.lines[:e.cursor.Line],
-			e.buffer.lines[e.cursor.Line+1:]...)
+		e.buffer.DeleteLine(e.cursor.Line)
 
 		// Move cursor to the end of the merged line
 		e.cursor.Line--
@@ -94,7 +86,7 @@ func (e *Editor) Backspace() {
 	updated = append(updated, line[e.cursor.Column:]...)
 
 	// Convert back to string and store in buffer
-	e.buffer.lines[e.cursor.Line] = string(updated)
+	e.buffer.SetLine(e.cursor.Line, string(updated))
 
 	// Move cursor one position to the left
 	e.cursor.Column--
@@ -137,7 +129,7 @@ func (e *Editor) MoveLeft() {
 func (e *Editor) MoveRight() {
 	// If caret is at the very end of the buffer,
 	// do nothing
-	if e.cursor.Line == len(e.buffer.lines)-1 &&
+	if e.cursor.Line == e.buffer.LineCount()-1 &&
 		e.cursor.Column == e.getLineLength(e.cursor.Line) {
 		return
 	}
@@ -190,8 +182,8 @@ func (e *Editor) MoveUp() {
 //   - If already at the last line, move to the end of the line
 func (e *Editor) MoveDown() {
 	// If already at the last line,
-	// move to the end of the line
-	if e.cursor.Line == len(e.buffer.lines)-1 {
+	// move cursor to the end of the line
+	if e.cursor.Line == e.buffer.LineCount()-1 {
 		e.cursor.Column = e.getLineLength(e.cursor.Line)
 		return
 	}
@@ -213,7 +205,7 @@ func (e *Editor) MoveDown() {
 // moves the cursor to the beginning of the new line.
 //
 // Process:
-//  1. Split current line into "before" (left of cursor) and "after" (right of cursor)
+//  1. Split the line at the cursor position
 //  2. Replace current line with the "before" part
 //  3. Insert a new line containing the "after" part
 //  4. Move cursor to the beginning of the new line (column 0)
@@ -226,12 +218,11 @@ func (e *Editor) Enter() {
 	rightSide := string(line[e.cursor.Column:]) // Text after cursor
 
 	// Replace current line with left side
-	e.buffer.lines[e.cursor.Line] = leftSide
+	e.buffer.SetLine(e.cursor.Line, leftSide)
 
 	// Insert new line with right side after current line
 	// Insert at position e.cursor.Line + 1
-	e.buffer.lines = append(e.buffer.lines[:e.cursor.Line+1],
-		append([]string{rightSide}, e.buffer.lines[e.cursor.Line+1:]...)...)
+	e.buffer.InsertLine(e.cursor.Line+1, rightSide)
 
 	// Move cursor to the beginning of the new line
 	e.cursor.Line++
@@ -240,17 +231,13 @@ func (e *Editor) Enter() {
 
 // getLineLength returns the number of Unicode characters (runes) in a line
 func (e *Editor) getLineLength(lineNum int) int {
-	if lineNum < 0 || lineNum >= len(e.buffer.lines) {
-		return 0
-	}
-
-	return len([]rune(e.buffer.lines[lineNum]))
+	return e.buffer.LineLength(lineNum)
 }
 
 // lineToRuneSlice converts given line to rune slice.
 // Since buffer is a string, and strings are immutable,
 // this is required to modify the buffer.
 func (e *Editor) lineToRuneSlice(lineNum int) []rune {
-	slice := []rune(e.buffer.lines[lineNum])
+	slice := []rune(e.buffer.Line(lineNum))
 	return slice
 }
