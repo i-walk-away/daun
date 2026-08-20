@@ -166,6 +166,7 @@ func (e *Editor) MoveUp() {
 	// move cursor to the beginning of the line
 	if e.cursor.Line == 0 {
 		e.cursor.Column = 0
+		return
 	}
 
 	// If the target line length is shorter than the current column,
