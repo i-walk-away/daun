@@ -99,87 +99,88 @@ func (e *Editor) MoveDown() {
 	e.cursor.Line++
 }
 
+// MoveWordLeft moves the caret to the beginning of the nearest word
+// to the left.
+//
+// Whitespace is skipped and is never treated as a word. If the caret is
+// inside a word, it moves to the beginning of that word. If the caret is
+// separated from the previous word by whitespace, the whitespace is
+// skipped first and the caret moves to the beginning of that word.
+//
+// If the caret is at the beginning of a line, it wraps to the end of the
+// previous line.
 func (e *Editor) MoveWordLeft() {
-	// If caret already at the very beginning of the buffer,
-	// do nothing
-	if e.cursor.Column == 0 && e.cursor.Line == 0 {
+	if e.cursor.Line == 0 && e.cursor.Column == 0 {
 		return
 	}
 
-	// If caret is at the beginning of a line,
-	// wrap to the end of the previous line
 	if e.cursor.Column == 0 {
 		e.cursor.Line--
-		// Move caret to the end of the previous line
-		e.cursor.Column = e.getLineLength(e.cursor.Line)
+		e.cursor.Column = e.buffer.LineLength(e.cursor.Line)
 		return
 	}
 
-	// Otherwise, simply move left by 1 word
-	line := e.lineToRuneSlice(e.cursor.Line)
-	e.cursor.Column = previousWordBoundary(line, e.cursor.Column)
+	e.cursor.Column = previousWordBoundary(
+		e.buffer.Line(e.cursor.Line),
+		e.cursor.Column,
+	)
 }
 
+// MoveWordRight moves the caret to the end of the nearest word
+// to the right.
+//
+// If the caret is inside a word, it moves to the end of that word.
+// If the caret is on whitespace, the whitespace is skipped and the caret
+// moves to the end of the next word.
+//
+// If there is no word to the right, the caret moves to the end of the line.
+//
+// If the caret is at the end of a line, it wraps to the beginning of the
+// next line.
 func (e *Editor) MoveWordRight() {
-	// If caret is at the very end of the buffer,
-	// do nothing
 	if e.cursor.Line == e.buffer.LineCount()-1 &&
-		e.cursor.Column == e.getLineLength(e.cursor.Line) {
+		e.cursor.Column == e.buffer.LineLength(e.cursor.Line) {
 		return
 	}
 
-	// If caret is at the end of a line,
-	// wrap to the beginning of the next line
-	if e.cursor.Column == e.getLineLength(e.cursor.Line) {
+	if e.cursor.Column == e.buffer.LineLength(e.cursor.Line) {
 		e.cursor.Line++
 		e.cursor.Column = 0
 		return
 	}
 
-	// Otherwise, simply move right by 1 column
-	line := e.lineToRuneSlice(e.cursor.Line)
-	e.cursor.Column = nextWordBoundary(line, e.cursor.Column)
+	e.cursor.Column = nextWordBoundary(
+		e.buffer.Line(e.cursor.Line),
+		e.cursor.Column,
+	)
 }
 
-// previousWordBoundary returns the position at the beginning of the
-// nearest word to the left of column.
-//
-// Whitespace is skipped and is never returned as a boundary. If column
-// is inside a word, the beginning of that word is returned. If column
-// is after whitespace, the whitespace is skipped first, then the
-// beginning of the preceding word is returned.
-//
-// The returned position is in the range [0, column].
-func previousWordBoundary(line []rune, column int) int {
-	// Skip whitespace before the cursor.
-	for column > 0 && unicode.IsSpace(line[column-1]) {
+func previousWordBoundary(line string, column int) int {
+	runes := []rune(line)
+
+	// Skip whitespace to the left of the cursor.
+	for column > 0 && unicode.IsSpace(runes[column-1]) {
 		column--
 	}
 
 	// Move to the beginning of the previous word.
-	for column > 0 && !unicode.IsSpace(line[column-1]) {
+	for column > 0 && !unicode.IsSpace(runes[column-1]) {
 		column--
 	}
 
 	return column
 }
 
-// nextWordBoundary returns the position at the end of the nearest word
-// to the right of column.
-//
-// If column is inside a word, the end of that word is returned. If
-// column is on whitespace, the whitespace is skipped and the end of
-// the next word is returned. Whitespace is never returned as a boundary.
-//
-// If there is no word to the right, len(line) is returned.
-func nextWordBoundary(line []rune, column int) int {
-	// Skip the current word.
-	for column < len(line) && !unicode.IsSpace(line[column]) {
+func nextWordBoundary(line string, column int) int {
+	runes := []rune(line)
+
+	// Skip whitespace to the right of the cursor.
+	for column < len(runes) && unicode.IsSpace(runes[column]) {
 		column++
 	}
 
-	// Skip whitespace after the current word.
-	for column < len(line) && unicode.IsSpace(line[column]) {
+	// Move to the end of the next word.
+	for column < len(runes) && !unicode.IsSpace(runes[column]) {
 		column++
 	}
 

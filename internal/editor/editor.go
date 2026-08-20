@@ -1,9 +1,11 @@
 package editor
 
+import buffer2 "github.com/i-walk-away/daun/internal/buffer"
+
 // Editor represents the main text editor instance.
 // It holds the current state including the text buffer and cursor position.
 type Editor struct {
-	buffer *Buffer
+	buffer *buffer2.Buffer
 	cursor Position
 }
 
@@ -16,7 +18,7 @@ type Position struct {
 
 // NewEditor creates a new editor from an existing buffer.
 // It takes a pointer to the buffer so changes are reflected everywhere.
-func NewEditor(buffer *Buffer) *Editor {
+func NewEditor(buffer *buffer2.Buffer) *Editor {
 	return &Editor{
 		buffer: buffer,
 		cursor: Position{0, 0},
@@ -38,15 +40,7 @@ func (e *Editor) LineCount() int {
 	return e.buffer.LineCount()
 }
 
-// getLineLength returns the number of Unicode characters (runes) in a line
+// getLineLength returns the number of Unicode characters (runes) in a line.
 func (e *Editor) getLineLength(lineNum int) int {
 	return e.buffer.LineLength(lineNum)
-}
-
-// lineToRuneSlice converts given line to rune slice.
-// Since buffer is a string, and strings are immutable,
-// this is required to modify the buffer.
-func (e *Editor) lineToRuneSlice(lineNum int) []rune {
-	slice := []rune(e.buffer.Line(lineNum))
-	return slice
 }
