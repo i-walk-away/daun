@@ -78,6 +78,44 @@ func (e *Editor) Backspace() {
 	e.cursor.Column--
 }
 
+// DeleteWordBackwards deletes the text from the caret to the beginning
+// of the nearest word to the left.
+//
+// If the caret is at the beginning of a line, the current line is merged
+// with the previous line. If the caret is at the beginning of the buffer,
+// nothing happens.
+func (e *Editor) DeleteWordBackwards() {
+	// If cursor at the very beginning,
+	// do nothing
+	if e.cursor.Line == 0 && e.cursor.Column == 0 {
+		return
+	}
+
+	// If cursor is at the beginning of a line,
+	// merge the current line with the previous line.
+	if e.cursor.Column == 0 {
+		currentLine := e.buffer.Line(e.cursor.Line)
+		prevLine := e.buffer.Line(e.cursor.Line - 1)
+
+		e.buffer.SetLine(e.cursor.Line-1, prevLine+currentLine)
+		e.buffer.DeleteLine(e.cursor.Line)
+
+		e.cursor.Line--
+		e.cursor.Column = e.getLineLength(e.cursor.Line)
+		return
+	}
+
+	line := e.lineToRuneSlice(e.cursor.Line)
+	start := previousWordBoundary(line, e.cursor.Column)
+
+	updated := make([]rune, 0, len(line)-(e.cursor.Column-start))
+	updated = append(updated, line[:start]...)
+	updated = append(updated, line[e.cursor.Column:]...)
+
+	e.buffer.SetLine(e.cursor.Line, string(updated))
+	e.cursor.Column = start
+}
+
 // Enter inserts a newline at the current cursor position.
 //
 // This function splits the current line at the cursor position and

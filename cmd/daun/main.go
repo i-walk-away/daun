@@ -11,7 +11,7 @@ import (
 
 func main() {
 	buffer := editor.NewBuffer()
-	buffer.SetLine(0, "Hello, Daun!")
+	buffer.SetLine(0, "DAUN text editor by i walk away")
 
 	daunEditor := editor.NewEditor(buffer)
 	model := tui.NewModel(daunEditor)
