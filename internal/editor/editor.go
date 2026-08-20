@@ -23,6 +23,21 @@ func NewEditor(buffer *Buffer) *Editor {
 	}
 }
 
+// Cursor returns the current cursor position.
+func (e *Editor) Cursor() Position {
+	return e.cursor
+}
+
+// Line returns the text of the line at index.
+func (e *Editor) Line(index int) string {
+	return e.buffer.Line(index)
+}
+
+// LineCount returns the number of lines in the editor.
+func (e *Editor) LineCount() int {
+	return e.buffer.LineCount()
+}
+
 // Insert inserts a rune at the current caret position.
 //
 // Parameters:

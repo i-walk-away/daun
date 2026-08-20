@@ -14,6 +14,21 @@ func TestNewBuffer(t *testing.T) {
 	}
 }
 
+func TestBufferDeleteLastLine(t *testing.T) {
+	buffer := NewBuffer()
+	buffer.SetLine(0, "hello")
+
+	buffer.DeleteLine(0)
+
+	if buffer.LineCount() != 1 {
+		t.Errorf("expected 1 line, got %d", buffer.LineCount())
+	}
+
+	if got := buffer.Line(0); got != "" {
+		t.Errorf("expected empty line, got %q", got)
+	}
+}
+
 func TestBufferLine(t *testing.T) {
 	buffer := NewBuffer()
 	buffer.SetLine(0, "hello")
