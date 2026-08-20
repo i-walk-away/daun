@@ -56,7 +56,48 @@ func (e *Editor) Insert(r rune) {
 // If the cursor is at the beginning of the entire buffer (line 0, column 0),
 // nothing should happen.
 func (e *Editor) Backspace() {
-	// TODO: Implement
+	// If cursor at the very beginning,
+	// do nothing
+	if e.cursor.Line == 0 && e.cursor.Column == 0 {
+		return
+	}
+
+	// If cursor at the beginning of a line (not first line)
+	if e.cursor.Column == 0 {
+		// Get current line
+		currentLine := e.buffer.lines[e.cursor.Line]
+		// Merge with previous line
+		prevLine := e.buffer.lines[e.cursor.Line-1]
+		e.buffer.lines[e.cursor.Line-1] = prevLine + currentLine
+
+		// Remove current line
+		e.buffer.lines = append(e.buffer.lines[:e.cursor.Line],
+			e.buffer.lines[e.cursor.Line+1:]...)
+
+		// Move cursor to the end of the merged line
+		e.cursor.Line--
+		e.cursor.Column = e.getLineLength(e.cursor.Line)
+		return
+	}
+
+	// Normal backspace - remove character before cursor
+	line := e.lineToRuneSlice(e.cursor.Line)
+
+	// Create a new slice with capacity for the line minus one character
+	// Pre-allocating capacity improves performance by avoiding reallocations
+	updated := make([]rune, 0, len(line)-1)
+
+	// Add all characters BEFORE the character being deleted
+	updated = append(updated, line[:e.cursor.Column-1]...)
+
+	// Add all characters AFTER the character being deleted
+	updated = append(updated, line[e.cursor.Column:]...)
+
+	// Convert back to string and store in buffer
+	e.buffer.lines[e.cursor.Line] = string(updated)
+
+	// Move cursor one position to the left
+	e.cursor.Column--
 }
 
 // MoveLeft moves the caret one character to the left.
@@ -151,6 +192,7 @@ func (e *Editor) MoveDown() {
 	// move to the end of the line
 	if e.cursor.Line == len(e.buffer.lines)-1 {
 		e.cursor.Column = e.getLineLength(e.cursor.Line)
+		return
 	}
 
 	// If the target line length is shorter than the current column,
