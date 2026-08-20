@@ -7,6 +7,14 @@ type Buffer struct {
 	lines []string
 }
 
+// NewBuffer creates a new buffer with one empty line.
+// This ensures the buffer is never empty and always has at least one line.
+func NewBuffer() *Buffer {
+	return &Buffer{
+		lines: []string{""}, // Start with one empty line
+	}
+}
+
 // Line returns the text of the line at index.
 func (b *Buffer) Line(index int) string {
 	return b.lines[index]

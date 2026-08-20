@@ -3,7 +3,7 @@ package editor
 // Editor represents the main text editor instance.
 // It holds the current state including the text buffer and cursor position.
 type Editor struct {
-	buffer Buffer
+	buffer *Buffer
 	cursor Position
 }
 
@@ -12,6 +12,15 @@ type Editor struct {
 type Position struct {
 	Line   int // Current line number (0 = first line)
 	Column int // Current column position (0 = first character)
+}
+
+// NewEditor creates a new editor from an existing buffer.
+// It takes a pointer to the buffer so changes are reflected everywhere.
+func NewEditor(buffer *Buffer) *Editor {
+	return &Editor{
+		buffer: buffer,
+		cursor: Position{0, 0},
+	}
 }
 
 // Insert inserts a rune at the current caret position.
@@ -147,12 +156,6 @@ func (e *Editor) MoveRight() {
 }
 
 // MoveUp moves the caret up by one line.
-//
-// The new column position is calculated as follows:
-//   - Try to keep the same column position as before
-//   - If the target line is shorter than the current column,
-//     place the cursor at the end of the target line
-//   - If already at the first line (line 0), move cursor to the beginning of the line
 func (e *Editor) MoveUp() {
 	// If already at the first line,
 	// move cursor to the beginning of the line
@@ -174,15 +177,11 @@ func (e *Editor) MoveUp() {
 }
 
 // MoveDown moves the caret down by one line.
-//
-// The new column position is calculated as follows:
-//   - Try to keep the same column position as before
-//   - If the target line is shorter than the current column,
-//     place the cursor at the end of the target line
-//   - If already at the last line, move to the end of the line
 func (e *Editor) MoveDown() {
 	// If already at the last line,
 	// move cursor to the end of the line
+	// LineCount returns the number of lines, while line indexes start at 0,
+	// so the last line has index LineCount() - 1.
 	if e.cursor.Line == e.buffer.LineCount()-1 {
 		e.cursor.Column = e.getLineLength(e.cursor.Line)
 		return
@@ -203,12 +202,6 @@ func (e *Editor) MoveDown() {
 //
 // This function splits the current line at the cursor position and
 // moves the cursor to the beginning of the new line.
-//
-// Process:
-//  1. Split the line at the cursor position
-//  2. Replace current line with the "before" part
-//  3. Insert a new line containing the "after" part
-//  4. Move cursor to the beginning of the new line (column 0)
 func (e *Editor) Enter() {
 	// Convert current line to rune slice
 	var line []rune = e.lineToRuneSlice(e.cursor.Line)
