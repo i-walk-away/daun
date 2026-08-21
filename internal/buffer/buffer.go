@@ -23,6 +23,18 @@ func NewBuffer() *Buffer {
 	}
 }
 
+// Close releases resources owned by the buffer.
+//
+// For buffers created with NewBufferFromFile, this releases the underlying
+// memory mapping. Buffers created with NewBuffer do not own external resources.
+func (b *Buffer) Close() error {
+	if b == nil || b.sources == nil {
+		return nil
+	}
+
+	return b.sources.close()
+}
+
 // NewBufferFromText creates a buffer initialized with text.
 func NewBufferFromText(text string) *Buffer {
 	text = normalizeText(text)

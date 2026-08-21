@@ -30,6 +30,15 @@ func NewEditor(buffer *buffer.Buffer) *Editor {
 	}
 }
 
+// Close releases resources owned by the editor's buffer.
+func (e *Editor) Close() error {
+	if e == nil || e.buffer == nil {
+		return nil
+	}
+
+	return e.buffer.Close()
+}
+
 // Cursor returns the current cursor position.
 func (e *Editor) Cursor() Position {
 	return e.cursor
