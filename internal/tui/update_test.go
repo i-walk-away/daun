@@ -12,10 +12,22 @@ import (
 func newTestModel(text string) Model {
 	b := buffer.NewBuffer()
 	e := editor.NewEditor(b)
-
 	e.InsertText(text)
 
-	return NewModel(e)
+	return NewModel(e, &mockClipboard{})
+}
+
+type mockClipboard struct {
+	text string
+}
+
+func (m *mockClipboard) Copy(text string) error {
+	m.text = text
+	return nil
+}
+
+func (m *mockClipboard) Paste() (string, error) {
+	return m.text, nil
 }
 
 func TestCtrlASelectsAll(t *testing.T) {
@@ -48,9 +60,15 @@ func TestCtrlASelectsAll(t *testing.T) {
 	}
 }
 
-func TestCtrlCProducesClipboardCommand(t *testing.T) {
-	m := newTestModel("hello world")
-	m.editor.SelectAll()
+func TestCtrlCCopiesSelectionToClipboard(t *testing.T) {
+	clipboard := &mockClipboard{}
+
+	b := buffer.NewBuffer()
+	e := editor.NewEditor(b)
+	e.InsertText("hello world")
+	e.SelectAll()
+
+	m := NewModel(e, clipboard)
 
 	msg := tea.KeyPressMsg{
 		Code: 'c',
@@ -58,19 +76,30 @@ func TestCtrlCProducesClipboardCommand(t *testing.T) {
 	}
 
 	next, cmd := m.Update(msg)
+	m = next.(Model)
 
-	if next == nil {
-		t.Fatal("expected model")
+	if cmd != nil {
+		t.Fatal("expected no command for synchronous clipboard")
 	}
 
-	if cmd == nil {
-		t.Fatal("expected clipboard command")
+	if clipboard.text != "hello world" {
+		t.Fatalf(
+			"expected clipboard %q, got %q",
+			"hello world",
+			clipboard.text,
+		)
 	}
 }
 
 func TestCtrlXDeletesSelection(t *testing.T) {
-	m := newTestModel("hello world")
-	m.editor.SelectAll()
+	clipboard := &mockClipboard{}
+
+	b := buffer.NewBuffer()
+	e := editor.NewEditor(b)
+	e.InsertText("hello world")
+	e.SelectAll()
+
+	m := NewModel(e, clipboard)
 
 	msg := tea.KeyPressMsg{
 		Code: 'x',
@@ -80,12 +109,20 @@ func TestCtrlXDeletesSelection(t *testing.T) {
 	next, cmd := m.Update(msg)
 	m = next.(Model)
 
-	if cmd == nil {
-		t.Fatal("expected clipboard command")
+	if cmd != nil {
+		t.Fatal("expected no command for synchronous clipboard")
 	}
 
 	if got := m.editor.Line(0); got != "" {
 		t.Fatalf("expected empty line, got %q", got)
+	}
+
+	if clipboard.text != "hello world" {
+		t.Fatalf(
+			"expected clipboard %q, got %q",
+			"hello world",
+			clipboard.text,
+		)
 	}
 }
 

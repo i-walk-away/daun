@@ -1,130 +1,329 @@
 package buffer
 
-// Buffer holds the text content of the editor.
-// The text is stored as a slice of lines.
+import (
+	"strings"
+	"unicode/utf8"
+)
+
+// Buffer stores editor text in a piece table backed by a balanced B+ tree.
+// The tree indexes byte, rune, and newline counts for logarithmic document
+// navigation while keeping inserted and original text in append-only storage.
 type Buffer struct {
-	lines []Line
+	sources *sources
+	tree    *pieceTree
 }
 
-// NewBuffer creates a new buffer containing one empty line.
+// NewBuffer creates an empty buffer containing one empty line.
 func NewBuffer() *Buffer {
+	s := &sources{}
+
 	return &Buffer{
-		lines: []Line{{}},
+		sources: s,
+		tree:    newPieceTree(s, nil),
+	}
+}
+
+// NewBufferFromText creates a buffer initialized with text.
+func NewBufferFromText(text string) *Buffer {
+	text = normalizeText(text)
+
+	s := &sources{
+		original: []byte(text),
+	}
+
+	pieces := makePieces(sourceOriginal, s.original)
+
+	return &Buffer{
+		sources: s,
+		tree:    newPieceTree(s, pieces),
 	}
 }
 
 // Line returns the text of the line at index.
 func (b *Buffer) Line(index int) string {
-	return b.lines[index].String()
+	start, end := b.lineByteRange(index)
+
+	var builder strings.Builder
+	builder.Grow(end - start)
+
+	b.tree.readRange(
+		start,
+		end,
+		func(data []byte) {
+			_, _ = builder.Write(data)
+		},
+	)
+
+	return builder.String()
 }
 
 // LineLength returns the number of runes in the line at index.
 func (b *Buffer) LineLength(index int) int {
-	return b.lines[index].Len()
+	start, end := b.lineByteRange(index)
+
+	startMetrics := b.tree.prefixMetrics(start)
+	endMetrics := b.tree.prefixMetrics(end)
+
+	return endMetrics.runes - startMetrics.runes
 }
 
 // LineCount returns the number of lines in the buffer.
 func (b *Buffer) LineCount() int {
-	return len(b.lines)
+	return b.tree.totalNewlines() + 1
 }
 
-// Insert inserts a rune at the specified position.
+// Insert inserts a rune at the specified line and column.
 func (b *Buffer) Insert(line, column int, r rune) {
-	l := &b.lines[line]
+	b.InsertText(line, column, string(r))
+}
 
-	l.SetPosition(column)
-	l.Insert(r)
+// InsertText inserts text at the specified line and column.
+func (b *Buffer) InsertText(line, column int, text string) {
+	text = normalizeText(text)
+
+	if text == "" {
+		return
+	}
+
+	offset := b.positionToOffset(line, column)
+
+	addStart := len(b.sources.add)
+	b.sources.add = append(b.sources.add, []byte(text)...)
+
+	for _, p := range makePieces(sourceAdd, b.sources.add[addStart:]) {
+		p.start += addStart
+		p.end += addStart
+
+		b.tree.insertPiece(offset, p)
+		offset += p.metrics.bytes
+	}
 }
 
 // Delete removes the rune immediately before the specified position.
 func (b *Buffer) Delete(line, column int) {
-	l := &b.lines[line]
+	if line < 0 || line >= b.LineCount() || column <= 0 {
+		return
+	}
 
-	l.SetPosition(column)
-	l.Delete()
+	start := b.positionToOffset(line, column-1)
+	end := b.positionToOffset(line, column)
+
+	b.tree.deleteRange(start, end)
 }
 
 // InsertLine inserts an empty line at the specified index.
 func (b *Buffer) InsertLine(index int) {
-	b.lines = append(b.lines, Line{})
-	copy(b.lines[index+1:], b.lines[index:])
-	b.lines[index] = Line{}
+	lineCount := b.LineCount()
+	index = min(max(index, 0), lineCount)
+
+	if index == lineCount {
+		last := lineCount - 1
+		b.InsertText(last, b.LineLength(last), "\n")
+		return
+	}
+
+	b.InsertText(index, 0, "\n")
 }
 
 // DeleteLine removes the line at the specified index.
-func (b *Buffer) DeleteLine(index int) {
-	copy(b.lines[index:], b.lines[index+1:])
-	b.lines = b.lines[:len(b.lines)-1]
-}
-
-// DeleteRange removes the range [start, end) from the specified line.
-func (b *Buffer) DeleteRange(line, start, end int) {
-	l := &b.lines[line]
-
-	l.DeleteRange(start, end)
-}
-
-// DeleteRangeLines removes the text in the range [start, end).
 //
-// The range may span multiple lines. Text before start on the first line
-// and text after end on the last line are preserved and joined together.
+// The buffer always retains at least one line.
+func (b *Buffer) DeleteLine(index int) {
+	lineCount := b.LineCount()
+
+	if lineCount <= 1 || index < 0 || index >= lineCount {
+		return
+	}
+
+	switch {
+	case index < lineCount-1:
+		start := b.positionToOffset(index, 0)
+		end := b.positionToOffset(index+1, 0)
+
+		b.tree.deleteRange(start, end)
+
+	default:
+		start := b.positionToOffset(index-1, b.LineLength(index-1))
+		end := b.positionToOffset(index, b.LineLength(index))
+
+		b.tree.deleteRange(start, end)
+	}
+}
+
+// DeleteRange removes the range [start, end) from a single line.
+func (b *Buffer) DeleteRange(line, start, end int) {
+	if line < 0 || line >= b.LineCount() || start >= end {
+		return
+	}
+
+	startOffset := b.positionToOffset(line, start)
+	endOffset := b.positionToOffset(line, end)
+
+	b.tree.deleteRange(startOffset, endOffset)
+}
+
+// DeleteRangeLines removes the range [start, end), which may span lines.
 func (b *Buffer) DeleteRangeLines(
 	startLine, startColumn,
 	endLine, endColumn int,
 ) {
-	if startLine == endLine {
-		b.DeleteRange(startLine, startColumn, endColumn)
+	start := b.positionToOffset(startLine, startColumn)
+	end := b.positionToOffset(endLine, endColumn)
+
+	b.tree.deleteRange(start, end)
+}
+
+// TextRange returns the text in the range [start, end).
+func (b *Buffer) TextRange(
+	startLine, startColumn,
+	endLine, endColumn int,
+) string {
+	start := b.positionToOffset(startLine, startColumn)
+	end := b.positionToOffset(endLine, endColumn)
+
+	if start >= end {
+		return ""
+	}
+
+	var builder strings.Builder
+	builder.Grow(end - start)
+
+	b.tree.readRange(
+		start,
+		end,
+		func(data []byte) {
+			_, _ = builder.Write(data)
+		},
+	)
+
+	return builder.String()
+}
+
+// ReplaceRange replaces the range [start, end) with replacement.
+func (b *Buffer) ReplaceRange(
+	startLine, startColumn,
+	endLine, endColumn int,
+	replacement string,
+) {
+	start := b.positionToOffset(startLine, startColumn)
+	end := b.positionToOffset(endLine, endColumn)
+
+	replacement = normalizeText(replacement)
+
+	b.tree.deleteRange(start, end)
+
+	if replacement == "" {
 		return
 	}
 
-	first := []rune(b.Line(startLine))
-	last := []rune(b.Line(endLine))
+	addStart := len(b.sources.add)
+	b.sources.add = append(b.sources.add, []byte(replacement)...)
 
-	startColumn = min(max(startColumn, 0), len(first))
-	endColumn = min(max(endColumn, 0), len(last))
+	for _, p := range makePieces(sourceAdd, b.sources.add[addStart:]) {
+		p.start += addStart
+		p.end += addStart
 
-	merged := make([]rune, 0, startColumn+len(last)-endColumn)
-	merged = append(merged, first[:startColumn]...)
-	merged = append(merged, last[endColumn:]...)
-
-	b.lines[startLine] = newLine(string(merged))
-
-	removedLines := endLine - startLine
-
-	copy(
-		b.lines[startLine+1:],
-		b.lines[endLine+1:],
-	)
-
-	b.lines = b.lines[:len(b.lines)-removedLines]
+		b.tree.insertPiece(start, p)
+		start += p.metrics.bytes
+	}
 }
 
-// SplitLine splits the specified line at the given column.
-//
-// The text before the column remains in the original line.
-// The text after the column becomes a new line inserted immediately after it.
+// SplitLine splits a line at column.
 func (b *Buffer) SplitLine(line, column int) {
-	l := &b.lines[line]
-
-	left := l.String()
-	runes := []rune(left)
-
-	before := string(runes[:column])
-	after := string(runes[column:])
-
-	b.lines[line] = newLine(before)
-	b.InsertLine(line + 1)
-	b.lines[line+1] = newLine(after)
+	b.ReplaceRange(line, column, line, column, "\n")
 }
 
 // JoinLines joins the line at index with the following line.
-//
-// The contents of the following line are appended to the current line.
-// The following line is then removed.
 func (b *Buffer) JoinLines(line int) {
-	current := b.lines[line].String()
-	next := b.lines[line+1].String()
+	if line < 0 || line >= b.LineCount()-1 {
+		return
+	}
 
-	b.lines[line] = newLine(current + next)
-	b.DeleteLine(line + 1)
+	column := b.LineLength(line)
+	b.DeleteRangeLines(line, column, line+1, 0)
+}
+
+func (b *Buffer) lineByteRange(index int) (int, int) {
+	lineCount := b.LineCount()
+	index = min(max(index, 0), lineCount-1)
+
+	start := b.tree.offsetByNewlines(index)
+
+	var end int
+
+	if index == lineCount-1 {
+		end = b.tree.totalBytes()
+	} else {
+		end = b.tree.offsetByNewlines(index + 1)
+
+		if end > start {
+			end--
+		}
+	}
+
+	return start, max(end, start)
+}
+
+func (b *Buffer) positionToOffset(line, column int) int {
+	lineCount := b.LineCount()
+	line = min(max(line, 0), lineCount-1)
+
+	start, end := b.lineByteRange(line)
+
+	startMetrics := b.tree.prefixMetrics(start)
+	endMetrics := b.tree.prefixMetrics(end)
+
+	lineRunes := endMetrics.runes - startMetrics.runes
+	column = min(max(column, 0), lineRunes)
+
+	targetRunes := startMetrics.runes + column
+
+	return min(
+		b.tree.offsetByRunes(targetRunes),
+		end,
+	)
+}
+
+func makePieces(source sourceKind, data []byte) []piece {
+	if len(data) == 0 {
+		return nil
+	}
+
+	pieces := make(
+		[]piece,
+		0,
+		(len(data)+maxPieceBytes-1)/maxPieceBytes,
+	)
+
+	for start := 0; start < len(data); {
+		end := min(start+maxPieceBytes, len(data))
+
+		// Never split a UTF-8 sequence between pieces.
+		if end < len(data) {
+			for end > start && !utf8.RuneStart(data[end]) {
+				end--
+			}
+
+			if end == start {
+				end = min(start+maxPieceBytes, len(data))
+
+				for end < len(data) && !utf8.RuneStart(data[end]) {
+					end++
+				}
+			}
+		}
+
+		pieces = append(
+			pieces,
+			newPiece(source, start, end, data),
+		)
+
+		start = end
+	}
+
+	return pieces
+}
+
+func normalizeText(text string) string {
+	return strings.ReplaceAll(text, "\r\n", "\n")
 }

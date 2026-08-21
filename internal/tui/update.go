@@ -23,6 +23,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.viewport.ScrollDown(3, m.editor.LineCount())
 		}
 
+	case tea.PasteMsg:
+		m.editor.InsertText(msg.String())
+		m.updateViewport()
+
 	case tea.KeyPressMsg:
 		cmd, quit := m.handleKey(msg)
 
