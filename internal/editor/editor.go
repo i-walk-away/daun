@@ -5,8 +5,9 @@ import buffer2 "github.com/i-walk-away/daun/internal/buffer"
 // Editor represents the main text editor instance.
 // It holds the current state including the text buffer and cursor position.
 type Editor struct {
-	buffer *buffer2.Buffer
-	cursor Position
+	buffer    *buffer2.Buffer
+	cursor    Position
+	selection *Selection
 }
 
 // Position represents the cursor location in the editor.
