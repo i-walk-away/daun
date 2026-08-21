@@ -27,6 +27,7 @@ const (
 	searchModeFiles
 )
 
+// SearchState contains the state of the search overlay.
 type SearchState struct {
 	Mode  searchMode
 	Input textinput.Model
@@ -37,6 +38,7 @@ type SearchState struct {
 	files FileSearchState
 }
 
+// TextSearchState contains text-search state.
 type TextSearchState struct {
 	Current editor.Match
 
@@ -49,10 +51,14 @@ type TextSearchState struct {
 	cancel     context.CancelFunc
 }
 
+// FileSearchState contains file-picker state.
 type FileSearchState struct {
-	Results  []fileio.FileMatch
-	Selected int
-	Loading  bool
+	Results []fileio.FileMatch
+
+	Selected     int
+	ScrollOffset int
+
+	Loading bool
 
 	generation uint64
 	cancel     context.CancelFunc
@@ -75,11 +81,11 @@ type fileSearchResultMsg struct {
 func newTextSearchResult(
 	generation uint64,
 	query string,
-	editor *editor.Editor,
+	editorModel *editor.Editor,
 	start editor.Position,
 ) tea.Cmd {
 	return func() tea.Msg {
-		result, found := editor.Search(
+		result, found := editorModel.Search(
 			query,
 			start,
 		)
@@ -103,20 +109,19 @@ func (m *Model) openTextSearch() tea.Cmd {
 	m.search.Input.SetVirtualCursor(false)
 
 	m.search.originalCursor = m.editor.Cursor()
+	m.search.text = TextSearchState{}
 
 	if _, _, ok := m.editor.Selection(); ok {
 		if selected, exists := m.editor.SelectedText(); exists {
-			if len([]rune(selected)) > searchQueryLimit {
-				selected = string(
-					[]rune(selected)[:searchQueryLimit],
-				)
+			runes := []rune(selected)
+
+			if len(runes) > searchQueryLimit {
+				selected = string(runes[:searchQueryLimit])
 			}
 
 			m.search.Input.SetValue(selected)
 		}
 	}
-
-	m.search.text = TextSearchState{}
 
 	m.updateSearchInputWidth()
 	m.clearMessage()
@@ -172,74 +177,70 @@ func (m *Model) handleSearchKey(
 
 	case m.search.Mode == searchModeText &&
 		msg.Code == tea.KeyEnter:
-		m.acceptTextSearch()
+
+		if shift {
+			m.navigateTextSearch(-1)
+		} else {
+			m.acceptTextSearch()
+		}
+
 		return nil, false
 
 	case m.search.Mode == searchModeText &&
 		msg.Code == tea.KeyUp:
+
 		m.navigateTextSearch(-1)
 		return nil, false
 
 	case m.search.Mode == searchModeText &&
 		msg.Code == tea.KeyDown:
-		m.navigateTextSearch(1)
-		return nil, false
 
-	case m.search.Mode == searchModeText &&
-		ctrl &&
-		msg.Code == 'p':
-		m.navigateTextSearch(-1)
-		return nil, false
-
-	case m.search.Mode == searchModeText &&
-		ctrl &&
-		msg.Code == 'n':
 		m.navigateTextSearch(1)
 		return nil, false
 
 	case m.search.Mode == searchModeFiles &&
 		msg.Code == tea.KeyUp:
+
 		m.moveFileSelection(-1)
 		return nil, false
 
 	case m.search.Mode == searchModeFiles &&
 		msg.Code == tea.KeyDown:
+
 		m.moveFileSelection(1)
 		return nil, false
 
 	case m.search.Mode == searchModeFiles &&
 		msg.Code == tea.KeyEnter:
-		m.acceptFileSearch()
-		return nil, false
 
-	case m.search.Mode == searchModeText &&
-		shift &&
-		msg.Code == tea.KeyEnter:
-		m.navigateTextSearch(-1)
+		m.acceptFileSearch()
 		return nil, false
 	}
 
 	input, cmd := m.search.Input.Update(msg)
 	m.search.Input = input
 
-	if m.search.Mode == searchModeText {
+	switch m.search.Mode {
+	case searchModeText:
 		return tea.Batch(
 			cmd,
 			m.startTextSearch(),
 		), false
+
+	case searchModeFiles:
+		return tea.Batch(
+			cmd,
+			m.startFileSearch(),
+		), false
 	}
 
-	return tea.Batch(
-		cmd,
-		m.startFileSearch(),
-	), false
+	return cmd, false
 }
 
 func (m *Model) handleSearchPaste(
 	msg tea.PasteMsg,
 ) tea.Cmd {
 	input, cmd := m.search.Input.Update(msg)
-
 	m.search.Input = input
 
 	if m.search.Mode == searchModeText {
@@ -268,14 +269,11 @@ func (m *Model) startTextSearch() tea.Cmd {
 	m.search.text.generation++
 	generation := m.search.text.generation
 
-	start := m.search.originalCursor
-	editorModel := m.editor
-
 	return newTextSearchResult(
 		generation,
 		query,
-		editorModel,
-		start,
+		m.editor,
+		m.search.originalCursor,
 	)
 }
 
@@ -316,8 +314,10 @@ func (m *Model) navigateTextSearch(delta int) {
 
 	query := m.search.Input.Value()
 
-	var position editor.Position
-	var found bool
+	var (
+		position editor.Position
+		found    bool
+	)
 
 	if delta > 0 {
 		position, found = m.editor.Find(
@@ -335,60 +335,35 @@ func (m *Model) navigateTextSearch(delta int) {
 		if !found {
 			return
 		}
-
-		next, ok := m.editor.Search(
+	} else {
+		position, found = m.editor.FindPrevious(
 			query,
-			position,
+			m.search.text.Current.Start,
 		)
-		if !ok {
+
+		if !found {
+			position, found = m.findLastMatch(query)
+		}
+
+		if !found {
 			return
 		}
-
-		m.search.text.Current = next.Match
-
-		if m.search.text.Total > 0 {
-			m.search.text.CurrentIndex++
-			if m.search.text.CurrentIndex >
-				m.search.text.Total {
-				m.search.text.CurrentIndex = 1
-			}
-		}
-
-		return
 	}
 
-	position, found = m.editor.FindPrevious(
-		query,
-		m.search.text.Current.Start,
-	)
-
-	if !found {
-		// Wrap to the last match.
-		position, found = m.findLastMatch(query)
-	}
-
-	if !found {
-		return
-	}
-
-	previous, ok := m.editor.Search(
+	result, found := m.editor.Search(
 		query,
 		position,
 	)
-
-	if !ok {
+	if !found {
 		return
 	}
 
-	m.search.text.Current = previous.Match
+	m.search.text.Current = result.Match
+	m.search.text.CurrentIndex = result.Current
+	m.search.text.Total = result.Total
+	m.search.text.Wrapped = result.Wrapped
 
-	if m.search.text.Total > 0 {
-		m.search.text.CurrentIndex--
-		if m.search.text.CurrentIndex <= 0 {
-			m.search.text.CurrentIndex =
-				m.search.text.Total
-		}
-	}
+	m.scrollCursorIntoView(result.Match.Start)
 }
 
 func (m *Model) findLastMatch(
@@ -396,14 +371,16 @@ func (m *Model) findLastMatch(
 ) (editor.Position, bool) {
 	lastLine := m.editor.LineCount() - 1
 
-	cursor := editor.Position{
-		Line:   lastLine,
-		Column: len([]rune(m.editor.Line(lastLine))),
+	lastPosition := editor.Position{
+		Line: lastLine,
+		Column: len(
+			[]rune(m.editor.Line(lastLine)),
+		),
 	}
 
 	return m.editor.FindPrevious(
 		query,
-		cursor,
+		lastPosition,
 	)
 }
 
@@ -417,7 +394,6 @@ func (m *Model) acceptTextSearch() {
 	)
 
 	m.closeSearch()
-
 	m.updateViewport()
 }
 
@@ -435,7 +411,6 @@ func (m *Model) startFileSearch() tea.Cmd {
 
 	m.search.files.generation++
 	generation := m.search.files.generation
-	rootFinder := m.fileFinder
 
 	ctx, cancel := context.WithCancel(
 		context.Background(),
@@ -445,10 +420,7 @@ func (m *Model) startFileSearch() tea.Cmd {
 	m.search.files.Loading = true
 
 	return func() tea.Msg {
-		timer := time.NewTimer(
-			searchInputDebounce,
-		)
-
+		timer := time.NewTimer(searchInputDebounce)
 		defer timer.Stop()
 
 		select {
@@ -462,7 +434,7 @@ func (m *Model) startFileSearch() tea.Cmd {
 		case <-timer.C:
 		}
 
-		results, err := rootFinder.Search(
+		results, err := m.fileFinder.Search(
 			ctx,
 			query,
 			fileSearchLimit,
@@ -489,39 +461,32 @@ func (m *Model) handleFileSearchResult(
 		return
 	}
 
-	if msg.query !=
-		strings.TrimSpace(
-			m.search.Input.Value(),
-		) {
+	if msg.query != strings.TrimSpace(
+		m.search.Input.Value(),
+	) {
 		return
 	}
 
 	m.search.files.cancel = nil
 	m.search.files.Loading = false
+	m.search.files.Results = msg.results
 
-	if msg.err != nil {
-		if msg.err == context.Canceled {
-			return
-		}
+	if len(msg.results) == 0 {
+		m.search.files.Selected = 0
+		m.search.files.ScrollOffset = 0
+	} else {
+		m.search.files.Selected = min(
+			m.search.files.Selected,
+			len(msg.results)-1,
+		)
 
+		m.ensureFileSelectionVisible()
+	}
+
+	if msg.err != nil && len(msg.results) == 0 {
 		m.setMessage(
 			MessageError,
 			"file search failed: "+msg.err.Error(),
-		)
-
-		m.search.files.Results = nil
-		m.search.files.Selected = 0
-
-		return
-	}
-
-	m.search.files.Results = msg.results
-
-	if m.search.files.Selected >=
-		len(msg.results) {
-		m.search.files.Selected = max(
-			len(msg.results)-1,
-			0,
 		)
 	}
 }
@@ -542,6 +507,33 @@ func (m *Model) moveFileSelection(delta int) {
 	if m.search.files.Selected >= count {
 		m.search.files.Selected = 0
 	}
+
+	m.ensureFileSelectionVisible()
+}
+
+func (m *Model) ensureFileSelectionVisible() {
+	selected := m.search.files.Selected
+
+	if selected < m.search.files.ScrollOffset {
+		m.search.files.ScrollOffset = selected
+	}
+
+	maxVisible := fileVisibleLimit
+
+	if selected >= m.search.files.ScrollOffset+maxVisible {
+		m.search.files.ScrollOffset =
+			selected - maxVisible + 1
+	}
+
+	maxOffset := max(
+		len(m.search.files.Results)-maxVisible,
+		0,
+	)
+
+	m.search.files.ScrollOffset = min(
+		m.search.files.ScrollOffset,
+		maxOffset,
+	)
 }
 
 func (m *Model) acceptFileSearch() {
@@ -575,6 +567,21 @@ func (m *Model) acceptFileSearch() {
 	)
 
 	m.updateViewport()
+}
+
+func (m *Model) scrollCursorIntoView(
+	position editor.Position,
+) {
+	lineNumberWidth := lineNumberWidth(
+		m.editor.LineCount(),
+	)
+
+	m.viewport.EnsureCursorVisible(
+		position,
+		m.editor.Line(position.Line),
+		m.editor.LineCount(),
+		lineNumberWidth,
+	)
 }
 
 func (m *Model) cancelTextSearch() {
@@ -611,11 +618,15 @@ func (m *Model) updateSearchInputWidth() {
 func (m Model) searchHeight() int {
 	switch m.search.Mode {
 	case searchModeText:
-		// Separator + input.
 		return 2
 
 	case searchModeFiles:
 		height := 2
+
+		height += min(
+			len(m.search.files.Results),
+			fileVisibleLimit,
+		)
 
 		if len(m.search.files.Results) == 0 &&
 			!m.search.files.Loading &&
@@ -623,10 +634,7 @@ func (m Model) searchHeight() int {
 			height++
 		}
 
-		return height + min(
-			len(m.search.files.Results),
-			fileVisibleLimit,
-		)
+		return height
 
 	default:
 		return 0
@@ -638,9 +646,9 @@ func (m Model) renderSearchPanel() string {
 		return ""
 	}
 
-	var b strings.Builder
+	var builder strings.Builder
 
-	b.WriteString(
+	builder.WriteString(
 		searchSeparatorStyle.Render(
 			strings.Repeat(
 				"─",
@@ -649,24 +657,24 @@ func (m Model) renderSearchPanel() string {
 		),
 	)
 
-	b.WriteByte('\n')
+	builder.WriteByte('\n')
 
 	inputView := m.search.Input.View()
 
-	if m.search.Mode == searchModeText {
+	switch m.search.Mode {
+	case searchModeText:
 		counter := ""
 
 		switch {
-		case !m.search.text.Found:
-			if m.search.Input.Value() != "" {
-				counter = "No matches"
-			}
-
-		default:
-			counter = formatSearchCounter(
+		case m.search.text.Found:
+			counter = fmt.Sprintf(
+				"%d / %d",
 				m.search.text.CurrentIndex,
 				m.search.text.Total,
 			)
+
+		case m.search.Input.Value() != "":
+			counter = "No matches"
 		}
 
 		inputWidth := len([]rune(inputView))
@@ -677,63 +685,65 @@ func (m Model) renderSearchPanel() string {
 			1,
 		)
 
-		b.WriteString(inputView)
-		b.WriteString(strings.Repeat(" ", padding))
-		b.WriteString(counter)
+		builder.WriteString(inputView)
+		builder.WriteString(
+			strings.Repeat(" ", padding),
+		)
+		builder.WriteString(counter)
 
-		return b.String()
-	}
+	case searchModeFiles:
+		builder.WriteString(inputView)
 
-	b.WriteString(inputView)
-
-	if m.search.files.Loading {
-		b.WriteString("  " + searchInfoStyle.Render("…"))
-	}
-
-	for i, match := range m.search.files.Results {
-		if i >= fileVisibleLimit {
-			break
+		if m.search.files.Loading {
+			builder.WriteString(
+				"  " + searchInfoStyle.Render("…"),
+			)
 		}
 
-		b.WriteByte('\n')
+		start := m.search.files.ScrollOffset
+		end := min(
+			start+fileVisibleLimit,
+			len(m.search.files.Results),
+		)
 
-		style := searchResultStyle
+		for i := start; i < end; i++ {
+			match := m.search.files.Results[i]
 
-		if i == m.search.files.Selected {
-			style = searchResultSelectedStyle
+			builder.WriteByte('\n')
+
+			style := searchResultStyle
+
+			if i == m.search.files.Selected {
+				style = searchResultSelectedStyle
+			}
+
+			prefix := "  "
+
+			if i == m.search.files.Selected {
+				prefix = "› "
+			}
+
+			builder.WriteString(
+				style.
+					Width(max(m.width-2, 1)).
+					Render(
+						prefix + match.DisplayPath,
+					),
+			)
 		}
 
-		b.WriteString(
-			style.Width(
-				max(m.width-2, 1),
-			).Render(
-				"  " + match.DisplayPath,
-			),
-		)
+		if len(m.search.files.Results) == 0 &&
+			!m.search.files.Loading &&
+			m.search.Input.Value() != "" {
+
+			builder.WriteByte('\n')
+			builder.WriteString(
+				searchInfoStyle.Render(
+					"  No files found",
+				),
+			)
+		}
 	}
 
-	if len(m.search.files.Results) == 0 &&
-		!m.search.files.Loading &&
-		m.search.Input.Value() != "" {
-
-		b.WriteByte('\n')
-		b.WriteString(
-			searchInfoStyle.Render(
-				"  No files found",
-			),
-		)
-	}
-
-	return b.String()
-}
-
-func formatSearchCounter(
-	current int,
-	total int,
-) string {
-	return fmt.Sprintf(
-		"%d / %d",
-		current,
-		total,
-	)
+	return builder.String()
 }

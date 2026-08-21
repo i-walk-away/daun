@@ -264,6 +264,10 @@ func (m Model) setSearchCursor(
 		return
 	}
 
+	cursor.Shape = tea.CursorBar
+	cursor.Blink = true
+
+	// Search input is rendered after all document rows.
 	cursor.Y = contentHeight + 1
 
 	view.Cursor = cursor
