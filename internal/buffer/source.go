@@ -10,7 +10,7 @@ const (
 type sources struct {
 	original []byte
 	add      []byte
-	unmap    func() error
+	release  func() error
 }
 
 func (s *sources) bytes(source sourceKind, start, end int) []byte {
@@ -27,9 +27,9 @@ func (s *sources) bytes(source sourceKind, start, end int) []byte {
 }
 
 func (s *sources) close() error {
-	if s.unmap == nil {
+	if s.release == nil {
 		return nil
 	}
 
-	return s.unmap()
+	return s.release()
 }

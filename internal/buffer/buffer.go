@@ -23,10 +23,34 @@ func NewBuffer() *Buffer {
 	}
 }
 
+// NewBufferFromReadOnlySource creates a buffer backed by externally owned
+// read-only data.
+//
+// release is called when Close is invoked. The buffer does not modify data
+// provided through this source. Inserted text is stored separately in the
+// buffer's append-only add source.
+func NewBufferFromReadOnlySource(
+	data []byte,
+	release func() error,
+) *Buffer {
+	s := &sources{
+		original: data,
+		release:  release,
+	}
+
+	pieces := makePieces(sourceOriginal, data)
+
+	return &Buffer{
+		sources: s,
+		tree:    newPieceTree(s, pieces),
+	}
+}
+
 // Close releases resources owned by the buffer.
 //
-// For buffers created with NewBufferFromFile, this releases the underlying
-// memory mapping. Buffers created with NewBuffer do not own external resources.
+// Buffers backed by ordinary in-memory data have nothing to release.
+// Buffers backed by an external source, such as a memory-mapped file,
+// release that source here.
 func (b *Buffer) Close() error {
 	if b == nil || b.sources == nil {
 		return nil

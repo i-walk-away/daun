@@ -3,40 +3,46 @@ package editor
 import "github.com/i-walk-away/daun/internal/buffer"
 
 // Editor represents the main text editor instance.
-// It holds the current state including the text buffer and cursor position.
+//
+// Editor owns the current document state, cursor, selection, file path,
+// and editing history.
 type Editor struct {
 	buffer *buffer.Buffer
-	cursor Position
 
+	cursor    Position
 	selection *Selection
+
+	filePath string
+
+	revision      uint64
+	savedRevision uint64
 
 	undoStack []historyEntry
 	redoStack []historyEntry
 }
 
-// Position represents the cursor location in the editor.
+// Position represents the cursor location in the document.
+//
 // Both Line and Column are zero-based indices.
 type Position struct {
-	Line   int // Current line number (0 = first line)
-	Column int // Current column position (0 = first character)
+	Line   int
+	Column int
 }
 
-// NewEditor creates a new editor from an existing buffer.
-// It takes a pointer to the buffer so changes are reflected everywhere.
+// NewEditor creates a new editor from a buffer without associating it
+// with a file.
 func NewEditor(buffer *buffer.Buffer) *Editor {
 	return &Editor{
 		buffer: buffer,
-		cursor: Position{0, 0},
 	}
 }
 
-// Close releases resources owned by the editor's buffer.
-func (e *Editor) Close() error {
-	if e == nil || e.buffer == nil {
-		return nil
+// NewFileEditor creates a new editor associated with path.
+func NewFileEditor(buffer *buffer.Buffer, path string) *Editor {
+	return &Editor{
+		buffer:   buffer,
+		filePath: path,
 	}
-
-	return e.buffer.Close()
 }
 
 // Cursor returns the current cursor position.
@@ -54,7 +60,29 @@ func (e *Editor) LineCount() int {
 	return e.buffer.LineCount()
 }
 
-// getLineLength returns the number of Unicode characters (runes) in a line.
-func (e *Editor) getLineLength(lineNum int) int {
-	return e.buffer.LineLength(lineNum)
+// FilePath returns the path of the file associated with the editor.
+//
+// It returns an empty string for an unsaved document.
+func (e *Editor) FilePath() string {
+	return e.filePath
+}
+
+// Modified reports whether the document contains changes that have not
+// been saved.
+func (e *Editor) Modified() bool {
+	return e.revision != e.savedRevision
+}
+
+// Close releases resources owned by the editor's document.
+func (e *Editor) Close() error {
+	if e == nil || e.buffer == nil {
+		return nil
+	}
+
+	return e.buffer.Close()
+}
+
+// getLineLength returns the number of Unicode characters in a line.
+func (e *Editor) getLineLength(line int) int {
+	return e.buffer.LineLength(line)
 }
