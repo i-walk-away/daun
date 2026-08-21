@@ -57,6 +57,7 @@ func (b *Buffer) DeleteLine(index int) {
 	b.lines = b.lines[:len(b.lines)-1]
 }
 
+// DeleteRange removes the range [start, end) from the specified line.
 func (b *Buffer) DeleteRange(line, start, end int) {
 	l := &b.lines[line]
 
@@ -88,9 +89,14 @@ func (b *Buffer) DeleteRangeLines(
 
 	b.lines[startLine] = newLine(string(merged))
 
-	for i := startLine + 1; i <= endLine; i++ {
-		b.DeleteLine(startLine + 1)
-	}
+	removedLines := endLine - startLine
+
+	copy(
+		b.lines[startLine+1:],
+		b.lines[endLine+1:],
+	)
+
+	b.lines = b.lines[:len(b.lines)-removedLines]
 }
 
 // SplitLine splits the specified line at the given column.
