@@ -308,3 +308,161 @@ func TestEditorDeleteWordBackwardsAtBufferStart(t *testing.T) {
 		t.Fatalf("expected cursor %+v, got %+v", Position{Line: 0, Column: 0}, got)
 	}
 }
+
+func TestEditorInsertReplacesSelection(t *testing.T) {
+	b := buffer.NewBuffer()
+	insertText(b, 0, "hello world")
+
+	e := NewEditor(b)
+	e.SelectAll()
+
+	e.Insert('X')
+
+	if got := e.Line(0); got != "X" {
+		t.Fatalf("expected %q, got %q", "X", got)
+	}
+
+	if got := e.Cursor(); got != (Position{Line: 0, Column: 1}) {
+		t.Fatalf("expected cursor %+v, got %+v", Position{Line: 0, Column: 1}, got)
+	}
+
+	_, _, ok := e.Selection()
+	if ok {
+		t.Fatal("expected selection to be cleared")
+	}
+}
+
+func TestEditorBackspaceDeletesSelection(t *testing.T) {
+	b := buffer.NewBuffer()
+	insertText(b, 0, "hello world")
+
+	e := NewEditor(b)
+	e.SelectAll()
+
+	e.Backspace()
+
+	if got := e.Line(0); got != "" {
+		t.Fatalf("expected empty line, got %q", got)
+	}
+
+	if got := e.Cursor(); got != (Position{}) {
+		t.Fatalf("expected cursor at origin, got %+v", got)
+	}
+}
+
+func TestEditorDeleteSelectionSingleLine(t *testing.T) {
+	b := buffer.NewBuffer()
+	insertText(b, 0, "hello world")
+
+	e := NewEditor(b)
+
+	e.Move(
+		DirectionRight,
+		MoveByCharacter,
+		true,
+	)
+	e.Move(
+		DirectionRight,
+		MoveByCharacter,
+		true,
+	)
+	e.Move(
+		DirectionRight,
+		MoveByCharacter,
+		true,
+	)
+	e.Move(
+		DirectionRight,
+		MoveByCharacter,
+		true,
+	)
+	e.Move(
+		DirectionRight,
+		MoveByCharacter,
+		true,
+	)
+	e.Move(
+		DirectionRight,
+		MoveByCharacter,
+		true,
+	)
+
+	e.DeleteSelection()
+
+	if got := e.Line(0); got != "world" {
+		t.Fatalf("expected %q, got %q", "world", got)
+	}
+
+	if got := e.Cursor(); got != (Position{Line: 0, Column: 0}) {
+		t.Fatalf("expected cursor %+v, got %+v", Position{}, got)
+	}
+}
+
+func TestEditorCutSelection(t *testing.T) {
+	b := buffer.NewBuffer()
+	insertText(b, 0, "hello world")
+
+	e := NewEditor(b)
+	e.SelectAll()
+
+	text, ok := e.CutSelection()
+	if !ok {
+		t.Fatal("expected cut to return selected text")
+	}
+
+	if text != "hello world" {
+		t.Fatalf("expected %q, got %q", "hello world", text)
+	}
+
+	if got := e.Line(0); got != "" {
+		t.Fatalf("expected empty line, got %q", got)
+	}
+}
+
+func TestEditorInsertText(t *testing.T) {
+	b := buffer.NewBuffer()
+	insertText(b, 0, "hello")
+
+	e := NewEditor(b)
+	e.cursor.Column = e.buffer.LineLength(0)
+
+	e.InsertText(" world")
+
+	if got := e.Line(0); got != "hello world" {
+		t.Fatalf("expected %q, got %q", "hello world", got)
+	}
+
+	if got := e.Cursor(); got != (Position{Line: 0, Column: 11}) {
+		t.Fatalf("expected cursor %+v, got %+v", Position{Line: 0, Column: 11}, got)
+	}
+}
+
+func TestEditorInsertMultilineText(t *testing.T) {
+	b := buffer.NewBuffer()
+	insertText(b, 0, "hello")
+
+	e := NewEditor(b)
+	e.cursor.Column = e.buffer.LineLength(0)
+
+	e.InsertText(" world\nsecond line\nthird line")
+
+	if got := e.LineCount(); got != 3 {
+		t.Fatalf("expected 3 lines, got %d", got)
+	}
+
+	if got := e.Line(0); got != "hello world" {
+		t.Fatalf("expected %q, got %q", "hello world", got)
+	}
+
+	if got := e.Line(1); got != "second line" {
+		t.Fatalf("expected %q, got %q", "second line", got)
+	}
+
+	if got := e.Line(2); got != "third line" {
+		t.Fatalf("expected %q, got %q", "third line", got)
+	}
+
+	if got := e.Cursor(); got != (Position{Line: 2, Column: 10}) {
+		t.Fatalf("expected cursor %+v, got %+v", Position{Line: 2, Column: 10}, got)
+	}
+}
