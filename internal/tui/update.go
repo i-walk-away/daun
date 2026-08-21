@@ -9,73 +9,163 @@ import (
 // Update handles incoming terminal events.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
-	case tea.KeyPressMsg:
-		switch {
-		case msg.Code == tea.KeyEscape:
-			return m, tea.Quit
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+		m.updateViewport()
 
-		case msg.Mod.Contains(tea.ModCtrl) && msg.Code == tea.KeyLeft:
-			m.editor.Move(
-				editor.DirectionLeft,
-				editor.MoveByWord,
-				msg.Mod.Contains(tea.ModShift),
-			)
+	case tea.MouseWheelMsg:
+		switch msg.Button {
+		case tea.MouseWheelUp:
+			m.viewport.ScrollUp(3)
 
-		case msg.Mod.Contains(tea.ModCtrl) && msg.Code == tea.KeyRight:
-			m.editor.Move(
-				editor.DirectionRight,
-				editor.MoveByWord,
-				msg.Mod.Contains(tea.ModShift),
-			)
-
-		case msg.Mod.Contains(tea.ModCtrl) && msg.Code == 'h':
-			m.editor.DeleteWordBackwards()
-
-		case msg.Code == tea.KeyBackspace:
-			m.editor.Backspace()
-
-		case msg.Code == tea.KeyEnter:
-			m.editor.Enter()
-
-		case msg.Code == tea.KeyLeft:
-			m.editor.Move(
-				editor.DirectionLeft,
-				editor.MoveByCharacter,
-				msg.Mod.Contains(tea.ModShift),
-			)
-
-		case msg.Code == tea.KeyRight:
-			m.editor.Move(
-				editor.DirectionRight,
-				editor.MoveByCharacter,
-				msg.Mod.Contains(tea.ModShift),
-			)
-
-		case msg.Code == tea.KeyUp:
-			m.editor.Move(
-				editor.DirectionUp,
-				editor.MoveByCharacter,
-				msg.Mod.Contains(tea.ModShift),
-			)
-
-		case msg.Code == tea.KeyDown:
-			m.editor.Move(
-				editor.DirectionDown,
-				editor.MoveByCharacter,
-				msg.Mod.Contains(tea.ModShift),
-			)
-
-		case msg.Code == tea.KeySpace:
-			m.editor.Insert(' ')
-
-		default:
-			if msg.Text != "" {
-				for _, r := range msg.Text {
-					m.editor.Insert(r)
-				}
-			}
+		case tea.MouseWheelDown:
+			m.viewport.ScrollDown(3, m.editor.LineCount())
 		}
+
+	case tea.PasteMsg:
+		m.editor.InsertText(msg.Content)
+		m.updateViewport()
+
+	case tea.ClipboardMsg:
+		m.editor.InsertText(msg.String())
+		m.updateViewport()
+
+	case tea.KeyPressMsg:
+		cmd, quit := m.handleKey(msg)
+
+		m.updateViewport()
+
+		if quit {
+			return m, tea.Quit
+		}
+
+		return m, cmd
 	}
 
 	return m, nil
+}
+
+// handleKey handles a keyboard event.
+//
+// It returns a command when the key requires an asynchronous Bubble Tea
+// operation, such as clipboard access.
+func (m *Model) handleKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
+	shift := msg.Mod.Contains(tea.ModShift)
+	ctrl := msg.Mod.Contains(tea.ModCtrl)
+
+	switch {
+	case ctrl && msg.Code == 'a':
+		m.editor.SelectAll()
+
+	case ctrl && msg.Code == 'c':
+		if text, ok := m.editor.SelectedText(); ok {
+			m.editor.ClearSelection()
+
+			return tea.SetClipboard(text), false
+		}
+
+	case ctrl && msg.Code == 'x':
+		if text, ok := m.editor.CutSelection(); ok {
+			return tea.SetClipboard(text), false
+		}
+
+	case ctrl && msg.Code == 'v':
+		return func() tea.Msg {
+			return tea.ReadClipboard()
+		}, false
+
+	case ctrl && msg.Code == 'z' && shift:
+		m.editor.Redo()
+
+	case ctrl && msg.Code == 'z':
+		m.editor.Undo()
+
+	case ctrl && msg.Code == 'y':
+		m.editor.Redo()
+
+	case msg.Code == tea.KeyEscape:
+		return nil, true
+
+	case ctrl && msg.Code == tea.KeyLeft:
+		m.editor.Move(
+			editor.DirectionLeft,
+			editor.MoveByWord,
+			shift,
+		)
+
+	case ctrl && msg.Code == tea.KeyRight:
+		m.editor.Move(
+			editor.DirectionRight,
+			editor.MoveByWord,
+			shift,
+		)
+
+	case ctrl && msg.Code == 'h':
+		m.editor.DeleteWordBackwards()
+
+	case msg.Code == tea.KeyBackspace:
+		m.editor.Backspace()
+
+	case msg.Code == tea.KeyEnter:
+		m.editor.Enter()
+
+	case msg.Code == tea.KeyLeft:
+		m.editor.Move(
+			editor.DirectionLeft,
+			editor.MoveByCharacter,
+			shift,
+		)
+
+	case msg.Code == tea.KeyRight:
+		m.editor.Move(
+			editor.DirectionRight,
+			editor.MoveByCharacter,
+			shift,
+		)
+
+	case msg.Code == tea.KeyUp:
+		m.editor.Move(
+			editor.DirectionUp,
+			editor.MoveByCharacter,
+			shift,
+		)
+
+	case msg.Code == tea.KeyDown:
+		m.editor.Move(
+			editor.DirectionDown,
+			editor.MoveByCharacter,
+			shift,
+		)
+
+	case msg.Code == tea.KeySpace:
+		m.editor.Insert(' ')
+
+	default:
+		if msg.Text != "" {
+			m.editor.InsertText(msg.Text)
+		}
+	}
+
+	return nil, false
+}
+
+func (m *Model) updateViewport() {
+	if m.width <= 0 || m.height <= 0 {
+		return
+	}
+
+	lineNumberWidth := lineNumberWidth(m.editor.LineCount())
+	contentHeight := max(m.height-1, 0)
+
+	m.viewport.SetSize(m.width, contentHeight)
+
+	cursor := m.editor.Cursor()
+
+	m.viewport.EnsureCursorVisible(
+		cursor,
+		m.editor.Line(cursor.Line),
+		m.editor.LineCount(),
+		lineNumberWidth,
+	)
 }
