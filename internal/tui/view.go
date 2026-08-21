@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -60,11 +61,16 @@ func (m Model) View() tea.View {
 		b.WriteRune('\n')
 	}
 
-	// Keep the status bar at the bottom of the editor area.
 	renderedLines := visibleEnd - visibleStart
+
 	for renderedLines < contentHeight {
 		b.WriteRune('\n')
 		renderedLines++
+	}
+
+	if m.message != nil {
+		b.WriteString(m.renderMessage())
+		b.WriteRune('\n')
 	}
 
 	b.WriteString(m.renderStatusBar())
@@ -78,19 +84,54 @@ func (m Model) View() tea.View {
 	return view
 }
 
+func (m Model) renderMessage() string {
+	if m.message == nil {
+		return ""
+	}
+
+	var style = messageInfoStyle
+
+	switch m.message.Level {
+	case MessageSuccess:
+		style = messageSuccessStyle
+
+	case MessageWarning:
+		style = messageWarningStyle
+
+	case MessageError:
+		style = messageErrorStyle
+	}
+
+	text := style.Render(m.message.Text)
+
+	return messagePanelStyle.Width(max(m.width-2, 0)).Render(text)
+}
+
 func (m Model) renderStatusBar() string {
 	cursor := m.editor.Cursor()
 
-	left := fmt.Sprintf(
-		"Ln %d, Col %d",
+	fileName := "[No Name]"
+
+	if path := m.editor.FilePath(); path != "" {
+		fileName = filepath.Base(path)
+	}
+
+	modifiedMarker := ""
+
+	if m.editor.Modified() {
+		modifiedMarker = " [+]"
+	}
+
+	left := fileName + modifiedMarker
+
+	right := fmt.Sprintf(
+		"Ln %d, Col %d   UTF-8",
 		cursor.Line+1,
 		cursor.Column+1,
 	)
 
-	right := "UTF-8"
-
 	if m.width <= 0 {
-		return statusBarStyle.Render(left + " " + right)
+		return statusBarStyle.Render(left + "  " + right)
 	}
 
 	padding := m.width - len([]rune(left)) - len([]rune(right))
