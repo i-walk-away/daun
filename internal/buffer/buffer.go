@@ -63,6 +63,36 @@ func (b *Buffer) DeleteRange(line, start, end int) {
 	l.DeleteRange(start, end)
 }
 
+// DeleteRangeLines removes the text in the range [start, end).
+//
+// The range may span multiple lines. Text before start on the first line
+// and text after end on the last line are preserved and joined together.
+func (b *Buffer) DeleteRangeLines(
+	startLine, startColumn,
+	endLine, endColumn int,
+) {
+	if startLine == endLine {
+		b.DeleteRange(startLine, startColumn, endColumn)
+		return
+	}
+
+	first := []rune(b.Line(startLine))
+	last := []rune(b.Line(endLine))
+
+	startColumn = min(max(startColumn, 0), len(first))
+	endColumn = min(max(endColumn, 0), len(last))
+
+	merged := make([]rune, 0, startColumn+len(last)-endColumn)
+	merged = append(merged, first[:startColumn]...)
+	merged = append(merged, last[endColumn:]...)
+
+	b.lines[startLine] = newLine(string(merged))
+
+	for i := startLine + 1; i <= endLine; i++ {
+		b.DeleteLine(startLine + 1)
+	}
+}
+
 // SplitLine splits the specified line at the given column.
 //
 // The text before the column remains in the original line.

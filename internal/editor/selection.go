@@ -8,8 +8,8 @@ type Selection struct {
 	Anchor Position
 }
 
-// NewSelection creates a selection starting at anchor.
-func NewSelection(anchor Position) *Selection {
+// newSelection creates a selection starting at anchor.
+func newSelection(anchor Position) *Selection {
 	return &Selection{
 		Anchor: anchor,
 	}
@@ -41,4 +41,18 @@ func positionLess(a, b Position) bool {
 	}
 
 	return a.Column < b.Column
+}
+
+// BeginSelection starts a selection at the current cursor position.
+func (e *Editor) BeginSelection() {
+	if e.selection != nil {
+		return
+	}
+
+	e.selection = newSelection(e.cursor)
+}
+
+// ClearSelection removes the current selection.
+func (e *Editor) ClearSelection() {
+	e.selection = nil
 }

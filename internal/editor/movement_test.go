@@ -18,10 +18,10 @@ func TestEditorMoveLeft(t *testing.T) {
 
 	e := NewEditor(b)
 
-	e.MoveRight()
-	e.MoveRight()
-	e.MoveRight()
-	e.MoveLeft()
+	e.moveRight()
+	e.moveRight()
+	e.moveRight()
+	e.moveLeft()
 
 	if got := e.Cursor(); got != (Position{Line: 0, Column: 2}) {
 		t.Fatalf("expected cursor %+v, got %+v", Position{Line: 0, Column: 2}, got)
@@ -35,8 +35,8 @@ func TestEditorMoveLeftAtLineStart(t *testing.T) {
 	insertText(b, 1, "world")
 
 	e := NewEditor(b)
-	e.MoveDown()
-	e.MoveLeft()
+	e.moveDown()
+	e.moveLeft()
 
 	if got := e.Cursor(); got != (Position{Line: 0, Column: 5}) {
 		t.Fatalf("expected cursor %+v, got %+v", Position{Line: 0, Column: 5}, got)
@@ -48,7 +48,7 @@ func TestEditorMoveLeftAtBufferStart(t *testing.T) {
 	insertText(b, 0, "hello")
 
 	e := NewEditor(b)
-	e.MoveLeft()
+	e.moveLeft()
 
 	if got := e.Cursor(); got != (Position{Line: 0, Column: 0}) {
 		t.Fatalf("expected cursor %+v, got %+v", Position{Line: 0, Column: 0}, got)
@@ -60,7 +60,7 @@ func TestEditorMoveRight(t *testing.T) {
 	insertText(b, 0, "hello")
 
 	e := NewEditor(b)
-	e.MoveRight()
+	e.moveRight()
 
 	if got := e.Cursor(); got != (Position{Line: 0, Column: 1}) {
 		t.Fatalf("expected cursor %+v, got %+v", Position{Line: 0, Column: 1}, got)
@@ -76,10 +76,10 @@ func TestEditorMoveRightAtLineEnd(t *testing.T) {
 	e := NewEditor(b)
 
 	for range 5 {
-		e.MoveRight()
+		e.moveRight()
 	}
 
-	e.MoveRight()
+	e.moveRight()
 
 	if got := e.Cursor(); got != (Position{Line: 1, Column: 0}) {
 		t.Fatalf("expected cursor %+v, got %+v", Position{Line: 1, Column: 0}, got)
@@ -93,7 +93,7 @@ func TestEditorMoveRightAtBufferEnd(t *testing.T) {
 	e := NewEditor(b)
 
 	for range 6 {
-		e.MoveRight()
+		e.moveRight()
 	}
 
 	if got := e.Cursor(); got != (Position{Line: 0, Column: 5}) {
@@ -108,12 +108,12 @@ func TestEditorMoveUp(t *testing.T) {
 	insertText(b, 1, "world")
 
 	e := NewEditor(b)
-	e.MoveDown()
+	e.moveDown()
 
-	e.MoveRight()
-	e.MoveRight()
-	e.MoveRight()
-	e.MoveUp()
+	e.moveRight()
+	e.moveRight()
+	e.moveRight()
+	e.moveUp()
 
 	if got := e.Cursor(); got != (Position{Line: 0, Column: 3}) {
 		t.Fatalf("expected cursor %+v, got %+v", Position{Line: 0, Column: 3}, got)
@@ -127,13 +127,13 @@ func TestEditorMoveUpToShorterLine(t *testing.T) {
 	insertText(b, 1, "hello")
 
 	e := NewEditor(b)
-	e.MoveDown()
+	e.moveDown()
 
 	for range 5 {
-		e.MoveRight()
+		e.moveRight()
 	}
 
-	e.MoveUp()
+	e.moveUp()
 
 	if got := e.Cursor(); got != (Position{Line: 0, Column: 2}) {
 		t.Fatalf("expected cursor %+v, got %+v", Position{Line: 0, Column: 2}, got)
@@ -147,10 +147,10 @@ func TestEditorMoveUpAtFirstLine(t *testing.T) {
 	e := NewEditor(b)
 
 	for range 3 {
-		e.MoveRight()
+		e.moveRight()
 	}
 
-	e.MoveUp()
+	e.moveUp()
 
 	if got := e.Cursor(); got != (Position{Line: 0, Column: 0}) {
 		t.Fatalf("expected cursor %+v, got %+v", Position{Line: 0, Column: 0}, got)
@@ -165,10 +165,10 @@ func TestEditorMoveDown(t *testing.T) {
 
 	e := NewEditor(b)
 
-	e.MoveRight()
-	e.MoveRight()
-	e.MoveRight()
-	e.MoveDown()
+	e.moveRight()
+	e.moveRight()
+	e.moveRight()
+	e.moveDown()
 
 	if got := e.Cursor(); got != (Position{Line: 1, Column: 3}) {
 		t.Fatalf("expected cursor %+v, got %+v", Position{Line: 1, Column: 3}, got)
@@ -184,10 +184,10 @@ func TestEditorMoveDownToShorterLine(t *testing.T) {
 	e := NewEditor(b)
 
 	for range 5 {
-		e.MoveRight()
+		e.moveRight()
 	}
 
-	e.MoveDown()
+	e.moveDown()
 
 	if got := e.Cursor(); got != (Position{Line: 1, Column: 2}) {
 		t.Fatalf("expected cursor %+v, got %+v", Position{Line: 1, Column: 2}, got)
@@ -200,9 +200,9 @@ func TestEditorMoveDownAtLastLine(t *testing.T) {
 
 	e := NewEditor(b)
 
-	e.MoveRight()
-	e.MoveRight()
-	e.MoveDown()
+	e.moveRight()
+	e.moveRight()
+	e.moveDown()
 
 	if got := e.Cursor(); got != (Position{Line: 0, Column: 5}) {
 		t.Fatalf("expected cursor %+v, got %+v", Position{Line: 0, Column: 5}, got)
@@ -219,25 +219,25 @@ func TestEditorMoveWordLeft(t *testing.T) {
 
 	// Start at the end of the buffer.
 	for range len([]rune("hello beautiful world")) {
-		e.MoveRight()
+		e.moveRight()
 	}
 
 	// world -> beginning of world.
-	e.MoveWordLeft()
+	e.moveWordLeft()
 
 	if got := e.Cursor().Column; got != 16 {
 		t.Fatalf("expected column 16, got %d", got)
 	}
 
 	// beautiful -> beginning of beautiful.
-	e.MoveWordLeft()
+	e.moveWordLeft()
 
 	if got := e.Cursor().Column; got != 6 {
 		t.Fatalf("expected column 6, got %d", got)
 	}
 
 	// hello -> beginning of hello.
-	e.MoveWordLeft()
+	e.moveWordLeft()
 
 	if got := e.Cursor().Column; got != 0 {
 		t.Fatalf("expected column 0, got %d", got)
@@ -252,12 +252,12 @@ func TestEditorMoveWordLeftAcrossWhitespace(t *testing.T) {
 
 	// Move to the end of the line.
 	for range len([]rune("hello   beautiful world")) {
-		e.MoveRight()
+		e.moveRight()
 	}
 
 	// Ctrl+Left from the end of "world":
 	// move to the beginning of "world".
-	e.MoveWordLeft()
+	e.moveWordLeft()
 
 	if got := e.Cursor().Column; got != 18 {
 		t.Fatalf("expected cursor column 18, got %d", got)
@@ -265,7 +265,7 @@ func TestEditorMoveWordLeftAcrossWhitespace(t *testing.T) {
 
 	// Ctrl+Left from the end of "world":
 	// skip whitespace and move to the beginning of "beautiful".
-	e.MoveWordLeft()
+	e.moveWordLeft()
 
 	if got := e.Cursor().Column; got != 8 {
 		t.Fatalf("expected cursor column 8, got %d", got)
@@ -273,7 +273,7 @@ func TestEditorMoveWordLeftAcrossWhitespace(t *testing.T) {
 
 	// Ctrl+Left again:
 	// move to the beginning of "hello".
-	e.MoveWordLeft()
+	e.moveWordLeft()
 
 	if got := e.Cursor().Column; got != 0 {
 		t.Fatalf("expected cursor column 0, got %d", got)
@@ -287,10 +287,10 @@ func TestEditorMoveWordLeftInsideWord(t *testing.T) {
 	e := NewEditor(b)
 
 	for range 10 {
-		e.MoveRight()
+		e.moveRight()
 	}
 
-	e.MoveWordLeft()
+	e.moveWordLeft()
 
 	if got := e.Cursor().Column; got != 6 {
 		t.Fatalf("expected column 6, got %d", got)
@@ -304,10 +304,10 @@ func TestEditorMoveWordLeftFromWhitespace(t *testing.T) {
 	e := NewEditor(b)
 
 	for range 7 {
-		e.MoveRight()
+		e.moveRight()
 	}
 
-	e.MoveWordLeft()
+	e.moveWordLeft()
 
 	if got := e.Cursor().Column; got != 0 {
 		t.Fatalf("expected column 0, got %d", got)
@@ -323,21 +323,21 @@ func TestEditorMoveWordRight(t *testing.T) {
 	e := NewEditor(b)
 
 	// Start of hello -> end of hello.
-	e.MoveWordRight()
+	e.moveWordRight()
 
 	if got := e.Cursor().Column; got != 5 {
 		t.Fatalf("expected column 5, got %d", got)
 	}
 
 	// Skip whitespace, then move to the end of beautiful.
-	e.MoveWordRight()
+	e.moveWordRight()
 
 	if got := e.Cursor().Column; got != 15 {
 		t.Fatalf("expected column 15, got %d", got)
 	}
 
 	// Skip whitespace, then move to the end of world.
-	e.MoveWordRight()
+	e.moveWordRight()
 
 	if got := e.Cursor().Column; got != 21 {
 		t.Fatalf("expected column 21, got %d", got)
@@ -350,19 +350,19 @@ func TestEditorMoveWordRightAcrossWhitespace(t *testing.T) {
 
 	e := NewEditor(b)
 
-	e.MoveWordRight()
+	e.moveWordRight()
 
 	if got := e.Cursor().Column; got != 5 {
 		t.Fatalf("expected column 5, got %d", got)
 	}
 
-	e.MoveWordRight()
+	e.moveWordRight()
 
 	if got := e.Cursor().Column; got != 17 {
 		t.Fatalf("expected column 17, got %d", got)
 	}
 
-	e.MoveWordRight()
+	e.moveWordRight()
 
 	if got := e.Cursor().Column; got != 23 {
 		t.Fatalf("expected column 23, got %d", got)
@@ -376,10 +376,10 @@ func TestEditorMoveWordRightInsideWord(t *testing.T) {
 	e := NewEditor(b)
 
 	for range 8 {
-		e.MoveRight()
+		e.moveRight()
 	}
 
-	e.MoveWordRight()
+	e.moveWordRight()
 
 	if got := e.Cursor().Column; got != 15 {
 		t.Fatalf("expected column 15, got %d", got)
@@ -393,10 +393,10 @@ func TestEditorMoveWordRightFromWhitespace(t *testing.T) {
 	e := NewEditor(b)
 
 	for range 6 {
-		e.MoveRight()
+		e.moveRight()
 	}
 
-	e.MoveWordRight()
+	e.moveWordRight()
 
 	if got := e.Cursor().Column; got != 17 {
 		t.Fatalf("expected column 17, got %d", got)
@@ -410,10 +410,10 @@ func TestEditorMoveWordRightAtWordEnd(t *testing.T) {
 	e := NewEditor(b)
 
 	for range 5 {
-		e.MoveRight()
+		e.moveRight()
 	}
 
-	e.MoveWordRight()
+	e.moveWordRight()
 
 	if got := e.Cursor().Column; got != 15 {
 		t.Fatalf("expected column 15, got %d", got)
@@ -429,8 +429,8 @@ func TestEditorMoveWordLeftAcrossLines(t *testing.T) {
 	insertText(b, 1, "world")
 
 	e := NewEditor(b)
-	e.MoveDown()
-	e.MoveWordLeft()
+	e.moveDown()
+	e.moveWordLeft()
 
 	if got := e.Cursor(); got != (Position{Line: 0, Column: 5}) {
 		t.Fatalf("expected cursor %+v, got %+v", Position{Line: 0, Column: 5}, got)
@@ -446,10 +446,10 @@ func TestEditorMoveWordRightAcrossLines(t *testing.T) {
 	e := NewEditor(b)
 
 	for range 5 {
-		e.MoveRight()
+		e.moveRight()
 	}
 
-	e.MoveWordRight()
+	e.moveWordRight()
 
 	if got := e.Cursor(); got != (Position{Line: 1, Column: 0}) {
 		t.Fatalf("expected cursor %+v, got %+v", Position{Line: 1, Column: 0}, got)

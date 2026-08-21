@@ -32,8 +32,8 @@ func TestEditorInsertInMiddle(t *testing.T) {
 	e := NewEditor(b)
 
 	// Move between 'e' and 'l'.
-	e.MoveRight()
-	e.MoveRight()
+	e.moveRight()
+	e.moveRight()
 
 	e.Insert('l')
 
@@ -101,7 +101,7 @@ func TestEditorBackspaceAtLineStart(t *testing.T) {
 	e := NewEditor(b)
 
 	// Move cursor to the beginning of the second line.
-	e.MoveDown()
+	e.moveDown()
 
 	e.Backspace()
 
@@ -145,7 +145,7 @@ func TestEditorEnter(t *testing.T) {
 
 	// Move cursor between "hello" and " world".
 	for i := 0; i < 6; i++ {
-		e.MoveLeft()
+		e.moveLeft()
 	}
 
 	e.Enter()
@@ -175,11 +175,11 @@ func TestEditorEnterAtLineStart(t *testing.T) {
 		e.Insert(r)
 	}
 
-	e.MoveLeft()
-	e.MoveLeft()
-	e.MoveLeft()
-	e.MoveLeft()
-	e.MoveLeft()
+	e.moveLeft()
+	e.moveLeft()
+	e.moveLeft()
+	e.moveLeft()
+	e.moveLeft()
 
 	e.Enter()
 
@@ -253,7 +253,7 @@ func TestEditorDeleteWordBackwardsFromWhitespace(t *testing.T) {
 
 	// Move cursor to the end of the whitespace before "beautiful".
 	for i := 0; i < len([]rune("beautiful")); i++ {
-		e.MoveLeft()
+		e.moveLeft()
 	}
 
 	e.DeleteWordBackwards()
@@ -277,7 +277,7 @@ func TestEditorDeleteWordBackwardsAtStartOfLine(t *testing.T) {
 	}
 
 	e := NewEditor(b)
-	e.MoveDown()
+	e.moveDown()
 
 	e.DeleteWordBackwards()
 

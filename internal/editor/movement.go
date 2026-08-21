@@ -2,14 +2,66 @@ package editor
 
 import "unicode"
 
-// MoveLeft moves the caret one character to the left.
+type Direction int
+
+const (
+	DirectionLeft Direction = iota
+	DirectionRight
+	DirectionUp
+	DirectionDown
+)
+
+type MoveMode int
+
+const (
+	MoveByCharacter MoveMode = iota
+	MoveByWord
+)
+
+// Move moves the cursor in the specified direction.
+//
+// If selecting is true, the movement extends the current selection.
+// Otherwise, any active selection is cleared.
+func (e *Editor) Move(direction Direction, mode MoveMode, selecting bool) {
+	if selecting {
+		e.BeginSelection()
+	} else {
+		e.ClearSelection()
+	}
+
+	switch direction {
+	case DirectionLeft:
+		if mode == MoveByWord {
+			e.moveWordLeft()
+			return
+		}
+
+		e.moveLeft()
+
+	case DirectionRight:
+		if mode == MoveByWord {
+			e.moveWordRight()
+			return
+		}
+
+		e.moveRight()
+
+	case DirectionUp:
+		e.moveUp()
+
+	case DirectionDown:
+		e.moveDown()
+	}
+}
+
+// moveLeft moves the caret one character to the left.
 //
 // If the cursor is at the beginning of a line (column 0), moving left
 // wraps to the end of the previous line.
 //
 // If the cursor is at the very beginning of the buffer (line 0, column 0),
 // the cursor does not move.
-func (e *Editor) MoveLeft() {
+func (e *Editor) moveLeft() {
 	// If caret already at the very beginning of the buffer,
 	// do nothing
 	if e.cursor.Column == 0 && e.cursor.Line == 0 {
@@ -29,14 +81,14 @@ func (e *Editor) MoveLeft() {
 	e.cursor.Column--
 }
 
-// MoveRight moves the caret one character to the right.
+// moveRight moves the caret one character to the right.
 //
 // If the cursor is at the end of a line, moving right wraps to the
 // beginning of the next line.
 //
 // If the cursor is at the very end of the buffer (last line, end of line),
 // the cursor does not move.
-func (e *Editor) MoveRight() {
+func (e *Editor) moveRight() {
 	// If caret is at the very end of the buffer,
 	// do nothing
 	if e.cursor.Line == e.buffer.LineCount()-1 &&
@@ -56,8 +108,8 @@ func (e *Editor) MoveRight() {
 	e.cursor.Column++
 }
 
-// MoveUp moves the caret up by one line.
-func (e *Editor) MoveUp() {
+// moveUp moves the caret up by one line.
+func (e *Editor) moveUp() {
 	// If already at the first line,
 	// move cursor to the beginning of the line
 	if e.cursor.Line == 0 {
@@ -77,8 +129,8 @@ func (e *Editor) MoveUp() {
 	e.cursor.Line--
 }
 
-// MoveDown moves the caret down by one line.
-func (e *Editor) MoveDown() {
+// moveDown moves the caret down by one line.
+func (e *Editor) moveDown() {
 	// If already at the last line,
 	// move cursor to the end of the line
 	// LineCount returns the number of lines, while line indexes start at 0,
@@ -99,7 +151,7 @@ func (e *Editor) MoveDown() {
 	e.cursor.Line++
 }
 
-// MoveWordLeft moves the caret to the beginning of the nearest word
+// moveWordLeft moves the caret to the beginning of the nearest word
 // to the left.
 //
 // Whitespace is skipped and is never treated as a word. If the caret is
@@ -109,7 +161,7 @@ func (e *Editor) MoveDown() {
 //
 // If the caret is at the beginning of a line, it wraps to the end of the
 // previous line.
-func (e *Editor) MoveWordLeft() {
+func (e *Editor) moveWordLeft() {
 	if e.cursor.Line == 0 && e.cursor.Column == 0 {
 		return
 	}
@@ -126,7 +178,7 @@ func (e *Editor) MoveWordLeft() {
 	)
 }
 
-// MoveWordRight moves the caret to the end of the nearest word
+// moveWordRight moves the caret to the end of the nearest word
 // to the right.
 //
 // If the caret is inside a word, it moves to the end of that word.
@@ -137,7 +189,7 @@ func (e *Editor) MoveWordLeft() {
 //
 // If the caret is at the end of a line, it wraps to the beginning of the
 // next line.
-func (e *Editor) MoveWordRight() {
+func (e *Editor) moveWordRight() {
 	if e.cursor.Line == e.buffer.LineCount()-1 &&
 		e.cursor.Column == e.buffer.LineLength(e.cursor.Line) {
 		return
