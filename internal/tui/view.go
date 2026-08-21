@@ -7,40 +7,81 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
+
+	"github.com/i-walk-away/daun/internal/editor"
 )
 
 // View renders the editor.
 func (m Model) View() tea.View {
-	var b strings.Builder
+	var builder strings.Builder
 
 	start, end, hasSelection := m.editor.Selection()
 
-	lineNumberWidth := lineNumberWidth(m.editor.LineCount())
-	visibleStart, visibleEnd := m.viewport.VisibleLines(m.editor.LineCount())
+	lineNumberWidth := lineNumberWidth(
+		m.editor.LineCount(),
+	)
+
+	visibleStart, visibleEnd := m.viewport.VisibleLines(
+		m.editor.LineCount(),
+	)
+
 	contentHeight := m.viewport.Height()
 
 	for line := visibleStart; line < visibleEnd; line++ {
 		rawNumber := strconv.Itoa(line + 1)
 
-		b.WriteString(
-			strings.Repeat(
-				" ",
-				lineNumberWidth-len([]rune(rawNumber)),
-			),
-		)
+		padding := lineNumberWidth -
+			len([]rune(rawNumber))
 
-		if line == m.editor.Cursor().Line {
-			b.WriteString(currentLineNumberStyle.Render(rawNumber))
-		} else {
-			b.WriteString(lineNumberStyle.Render(rawNumber))
+		if padding > 0 {
+			builder.WriteString(
+				strings.Repeat(" ", padding),
+			)
 		}
 
-		b.WriteString(separatorStyle.Render(" │ "))
+		if line == m.editor.Cursor().Line {
+			builder.WriteString(
+				currentLineNumberStyle.Render(
+					rawNumber,
+				),
+			)
+		} else {
+			builder.WriteString(
+				lineNumberStyle.Render(
+					rawNumber,
+				),
+			)
+		}
+
+		builder.WriteString(
+			separatorStyle.Render(" │ "),
+		)
 
 		text := m.editor.Line(line)
-		contentWidth := m.viewport.ContentWidth(lineNumberWidth)
 
-		if hasSelection {
+		contentWidth := m.viewport.ContentWidth(
+			lineNumberWidth,
+		)
+
+		switch {
+		case m.search.Mode == searchModeText:
+			var current *editor.Match
+
+			if m.search.text.Found {
+				match := m.search.text.Current
+				current = &match
+			}
+
+			text = renderLineSearch(
+				text,
+				line,
+				m.search.Input.Value(),
+				current,
+				m.viewport.LeftColumn(),
+				contentWidth,
+			)
+
+		case hasSelection:
 			text = renderLineSelection(
 				text,
 				line,
@@ -49,7 +90,8 @@ func (m Model) View() tea.View {
 				m.viewport.LeftColumn(),
 				contentWidth,
 			)
-		} else {
+
+		default:
 			text = renderLine(
 				text,
 				m.viewport.LeftColumn(),
@@ -57,29 +99,55 @@ func (m Model) View() tea.View {
 			)
 		}
 
-		b.WriteString(text)
-		b.WriteRune('\n')
+		builder.WriteString(text)
+		builder.WriteRune('\n')
 	}
 
 	renderedLines := visibleEnd - visibleStart
 
 	for renderedLines < contentHeight {
-		b.WriteRune('\n')
+		builder.WriteRune('\n')
 		renderedLines++
 	}
 
-	if m.message != nil {
-		b.WriteString(m.renderMessage())
-		b.WriteRune('\n')
+	// Search occupies the area directly above the message panel.
+	if m.search.Mode != 0 {
+		builder.WriteString(
+			m.renderSearchPanel(),
+		)
+		builder.WriteRune('\n')
 	}
 
-	b.WriteString(m.renderStatusBar())
+	// Messages remain visible while search is open.
+	if m.message != nil {
+		builder.WriteString(
+			m.renderMessage(),
+		)
+		builder.WriteRune('\n')
+	}
 
-	view := tea.NewView(b.String())
+	builder.WriteString(
+		m.renderStatusBar(),
+	)
+
+	view := tea.NewView(
+		builder.String(),
+	)
+
 	view.AltScreen = true
 	view.MouseMode = tea.MouseModeCellMotion
 
-	m.setCursor(&view, lineNumberWidth)
+	if m.search.Mode != 0 {
+		m.setSearchCursor(
+			&view,
+			contentHeight,
+		)
+	} else {
+		m.setCursor(
+			&view,
+			lineNumberWidth,
+		)
+	}
 
 	return view
 }
@@ -89,7 +157,7 @@ func (m Model) renderMessage() string {
 		return ""
 	}
 
-	var style = messageInfoStyle
+	style := messageInfoStyle
 
 	switch m.message.Level {
 	case MessageSuccess:
@@ -102,9 +170,11 @@ func (m Model) renderMessage() string {
 		style = messageErrorStyle
 	}
 
-	text := style.Render(m.message.Text)
-
-	return messagePanelStyle.Width(max(m.width-2, 0)).Render(text)
+	return messagePanelStyle.
+		Width(max(m.width, 1)).
+		Render(
+			style.Render(m.message.Text),
+		)
 }
 
 func (m Model) renderStatusBar() string {
@@ -131,10 +201,14 @@ func (m Model) renderStatusBar() string {
 	)
 
 	if m.width <= 0 {
-		return statusBarStyle.Render(left + "  " + right)
+		return statusBarStyle.Render(
+			left + "  " + right,
+		)
 	}
 
-	padding := m.width - len([]rune(left)) - len([]rune(right))
+	padding := m.width -
+		len([]rune(left)) -
+		len([]rune(right))
 
 	if padding < 1 {
 		return statusBarStyle.Render(left)
@@ -145,25 +219,64 @@ func (m Model) renderStatusBar() string {
 	)
 }
 
-func (m Model) setCursor(view *tea.View, lineNumberWidth int) {
+func (m Model) setCursor(
+	view *tea.View,
+	lineNumberWidth int,
+) {
 	cursor := m.editor.Cursor()
-	line := []rune(m.editor.Line(cursor.Line))
+	line := []rune(
+		m.editor.Line(cursor.Line),
+	)
 
-	cursorColumn := min(cursor.Column, len(line))
-	cursorX := displayWidth(line[:cursorColumn])
+	cursorColumn := min(
+		cursor.Column,
+		len(line),
+	)
+
+	cursorX := displayWidth(
+		line[:cursorColumn],
+	)
+
 	cursorX -= m.viewport.LeftColumn()
 	cursorX += lineNumberWidth + 3
 
-	cursorY := cursor.Line - m.viewport.TopLine()
+	cursorY := cursor.Line -
+		m.viewport.TopLine()
 
 	view.Cursor = &tea.Cursor{
-		X:     max(cursorX, lineNumberWidth+3),
+		X: max(
+			cursorX,
+			lineNumberWidth+3,
+		),
 		Y:     max(cursorY, 0),
 		Shape: 2,
 		Blink: true,
 	}
 }
 
+func (m Model) setSearchCursor(
+	view *tea.View,
+	contentHeight int,
+) {
+	cursor := m.search.Input.Cursor()
+
+	if cursor == nil {
+		return
+	}
+
+	cursor.Shape = tea.CursorBar
+	cursor.Blink = true
+
+	// Search input is rendered after all document rows.
+	cursor.Y = contentHeight + 1
+
+	view.Cursor = cursor
+}
+
 func lineNumberWidth(lineCount int) int {
-	return len(strconv.Itoa(max(lineCount, 1)))
+	return len(
+		strconv.Itoa(
+			max(lineCount, 1),
+		),
+	)
 }

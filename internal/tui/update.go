@@ -3,7 +3,6 @@ package tui
 import (
 	"fmt"
 	"path/filepath"
-	"time"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -16,23 +15,56 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+
+		m.updateViewport()
+		m.updateSearchInputWidth()
+
+	case textSearchResultMsg:
+		m.handleTextSearchResult(msg)
+		m.updateViewport()
+
+	case fileSearchResultMsg:
+		m.handleFileSearchResult(msg)
+		m.updateViewport()
+
+	case tea.PasteMsg:
+		if m.search.Mode != 0 {
+			return m, m.handleSearchPaste(msg)
+		}
+
+		m.editor.InsertText(msg.String())
+		m.clearMessage()
 		m.updateViewport()
 
 	case tea.MouseWheelMsg:
+		if m.search.Mode != 0 {
+			return m, nil
+		}
+
 		switch msg.Button {
 		case tea.MouseWheelUp:
 			m.viewport.ScrollUp(3)
 
 		case tea.MouseWheelDown:
-			m.viewport.ScrollDown(3, m.editor.LineCount())
+			m.viewport.ScrollDown(
+				3,
+				m.editor.LineCount(),
+			)
 		}
 
-	case tea.PasteMsg:
-		m.editor.InsertText(msg.String())
-		m.clearMessage()
-		m.updateViewport()
-
 	case tea.KeyPressMsg:
+		if m.search.Mode != 0 {
+			cmd, quit := m.handleSearchKey(msg)
+
+			m.updateViewport()
+
+			if quit {
+				return m, tea.Quit
+			}
+
+			return m, cmd
+		}
+
 		cmd, quit := m.handleKey(msg)
 
 		m.updateViewport()
@@ -47,15 +79,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// handleKey handles keyboard input.
-//
-// It returns a command when the key requires an asynchronous Bubble Tea
-// operation and returns true when the application should quit.
-func (m *Model) handleKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
+// handleKey handles editor keyboard input.
+func (m *Model) handleKey(
+	msg tea.KeyPressMsg,
+) (tea.Cmd, bool) {
 	shift := msg.Mod.Contains(tea.ModShift)
 	ctrl := msg.Mod.Contains(tea.ModCtrl)
 
 	switch {
+	case ctrl && msg.Code == 'f':
+		return m.openTextSearch(), false
+
 	case ctrl && msg.Code == 'a':
 		m.editor.SelectAll()
 		m.clearMessage()
@@ -66,25 +100,49 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	case ctrl && msg.Code == 'c':
 		if text, ok := m.editor.SelectedText(); ok {
 			if err := m.clipboard.Copy(text); err != nil {
-				m.setMessage(MessageError, fmt.Sprintf("copy failed: %v", err))
+				m.setMessage(
+					MessageError,
+					fmt.Sprintf(
+						"copy failed: %v",
+						err,
+					),
+				)
 			} else {
-				m.setMessage(MessageSuccess, "Copied")
+				m.setMessage(
+					MessageSuccess,
+					"Copied",
+				)
 			}
 		}
 
 	case ctrl && msg.Code == 'x':
 		if text, ok := m.editor.CutSelection(); ok {
 			if err := m.clipboard.Copy(text); err != nil {
-				m.setMessage(MessageError, fmt.Sprintf("cut failed: %v", err))
+				m.setMessage(
+					MessageError,
+					fmt.Sprintf(
+						"cut failed: %v",
+						err,
+					),
+				)
 			} else {
-				m.setMessage(MessageSuccess, "Cut")
+				m.setMessage(
+					MessageSuccess,
+					"Cut",
+				)
 			}
 		}
 
 	case ctrl && msg.Code == 'v':
 		text, err := m.clipboard.Paste()
 		if err != nil {
-			m.setMessage(MessageError, fmt.Sprintf("paste failed: %v", err))
+			m.setMessage(
+				MessageError,
+				fmt.Sprintf(
+					"paste failed: %v",
+					err,
+				),
+			)
 			break
 		}
 
@@ -194,7 +252,9 @@ func (m *Model) save() {
 			MessageInfo,
 			fmt.Sprintf(
 				"%s is already saved",
-				filepath.Base(m.editor.FilePath()),
+				filepath.Base(
+					m.editor.FilePath(),
+				),
 			),
 		)
 		return
@@ -203,7 +263,10 @@ func (m *Model) save() {
 	if err := m.editor.Save(); err != nil {
 		m.setMessage(
 			MessageError,
-			fmt.Sprintf("save failed: %v", err),
+			fmt.Sprintf(
+				"save failed: %v",
+				err,
+			),
 		)
 		return
 	}
@@ -212,21 +275,25 @@ func (m *Model) save() {
 		MessageSuccess,
 		fmt.Sprintf(
 			"Saved %q",
-			filepath.Base(m.editor.FilePath()),
+			filepath.Base(
+				m.editor.FilePath(),
+			),
 		),
 	)
 }
 
-func (m *Model) setMessage(level MessageLevel, text string) {
-	m.message = &Message{
-		Level:     level,
-		Text:      text,
-		CreatedAt: time.Now(),
-	}
-}
-
 func (m *Model) clearMessage() {
 	m.message = nil
+}
+
+func (m *Model) setMessage(
+	level MessageLevel,
+	text string,
+) {
+	m.message = &Message{
+		Level: level,
+		Text:  text,
+	}
 }
 
 func (m *Model) updateViewport() {
@@ -234,16 +301,32 @@ func (m *Model) updateViewport() {
 		return
 	}
 
-	lineNumberWidth := lineNumberWidth(m.editor.LineCount())
+	lineNumberWidth := lineNumberWidth(
+		m.editor.LineCount(),
+	)
+
+	searchHeight := m.searchHeight()
 
 	messageHeight := 0
+
 	if m.message != nil {
 		messageHeight = 1
 	}
 
-	contentHeight := max(m.height-messageHeight-1, 0)
+	statusHeight := 1
 
-	m.viewport.SetSize(m.width, contentHeight)
+	contentHeight := max(
+		m.height-
+			searchHeight-
+			messageHeight-
+			statusHeight,
+		0,
+	)
+
+	m.viewport.SetSize(
+		m.width,
+		contentHeight,
+	)
 
 	cursor := m.editor.Cursor()
 

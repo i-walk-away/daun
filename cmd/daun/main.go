@@ -26,8 +26,19 @@ func main() {
 		}
 	}()
 
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	daunClipboard := clipboard.NewXClip()
-	model := tui.NewModel(daunEditor, daunClipboard)
+	fileFinder := fileio.NewFileFinder(homeDir)
+
+	model := tui.NewModel(
+		daunEditor,
+		daunClipboard,
+		fileFinder,
+	)
 
 	if _, err := tea.NewProgram(model).Run(); err != nil {
 		log.Fatal(err)
@@ -37,7 +48,9 @@ func main() {
 func loadEditor(args []string) (*editor.Editor, error) {
 	switch len(args) {
 	case 0:
-		return editor.NewEditor(buffer.NewBuffer()), nil
+		return editor.NewEditor(
+			buffer.NewBuffer(),
+		), nil
 
 	case 1:
 		return loadFileEditor(args[0])
@@ -53,5 +66,8 @@ func loadFileEditor(path string) (*editor.Editor, error) {
 		return nil, err
 	}
 
-	return editor.NewFileEditor(buf, path), nil
+	return editor.NewFileEditor(
+		buf,
+		path,
+	), nil
 }
