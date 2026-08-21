@@ -23,14 +23,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.viewport.ScrollDown(3, m.editor.LineCount())
 		}
 
-	case tea.PasteMsg:
-		m.editor.InsertText(msg.Content)
-		m.updateViewport()
-
-	case tea.ClipboardMsg:
-		m.editor.InsertText(msg.String())
-		m.updateViewport()
-
 	case tea.KeyPressMsg:
 		cmd, quit := m.handleKey(msg)
 
@@ -46,10 +38,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// handleKey handles a keyboard event.
+// handleKey handles keyboard input.
 //
 // It returns a command when the key requires an asynchronous Bubble Tea
-// operation, such as clipboard access.
+// operation and returns true when the application should quit.
 func (m *Model) handleKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	shift := msg.Mod.Contains(tea.ModShift)
 	ctrl := msg.Mod.Contains(tea.ModCtrl)
@@ -60,20 +52,25 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 
 	case ctrl && msg.Code == 'c':
 		if text, ok := m.editor.SelectedText(); ok {
-			m.editor.ClearSelection()
-
-			return tea.SetClipboard(text), false
+			if err := m.clipboard.Copy(text); err != nil {
+				return nil, false
+			}
 		}
 
 	case ctrl && msg.Code == 'x':
 		if text, ok := m.editor.CutSelection(); ok {
-			return tea.SetClipboard(text), false
+			if err := m.clipboard.Copy(text); err != nil {
+				return nil, false
+			}
 		}
 
 	case ctrl && msg.Code == 'v':
-		return func() tea.Msg {
-			return tea.ReadClipboard()
-		}, false
+		text, err := m.clipboard.Paste()
+		if err != nil {
+			return nil, false
+		}
+
+		m.editor.InsertText(text)
 
 	case ctrl && msg.Code == 'z' && shift:
 		m.editor.Redo()

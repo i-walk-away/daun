@@ -3,21 +3,28 @@ package tui
 import (
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/i-walk-away/daun/internal/clipboard"
 	"github.com/i-walk-away/daun/internal/editor"
 )
 
 // Model represents the state of the editor TUI.
 type Model struct {
-	editor   *editor.Editor
+	editor    *editor.Editor
+	clipboard clipboard.Clipboard
+
 	viewport Viewport
 	width    int
 	height   int
 }
 
 // NewModel creates a new TUI model from an editor.
-func NewModel(editor *editor.Editor) Model {
+func NewModel(
+	editor *editor.Editor,
+	clipboard clipboard.Clipboard,
+) Model {
 	return Model{
-		editor: editor,
+		editor:    editor,
+		clipboard: clipboard,
 	}
 }
 
