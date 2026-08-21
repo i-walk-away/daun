@@ -4,17 +4,26 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/i-walk-away/daun/internal/fileio"
 
 	"github.com/i-walk-away/daun/internal/buffer"
 	"github.com/i-walk-away/daun/internal/editor"
 )
 
-func newTestModel(text string) Model {
+func newTestModel(t *testing.T, text string) Model {
+	t.Helper()
+
 	b := buffer.NewBuffer()
 	e := editor.NewEditor(b)
 	e.InsertText(text)
 
-	return NewModel(e, &mockClipboard{})
+	finder := fileio.NewFileFinder(t.TempDir())
+
+	return NewModel(
+		e,
+		&mockClipboard{},
+		finder,
+	)
 }
 
 type mockClipboard struct {
@@ -31,8 +40,7 @@ func (m *mockClipboard) Paste() (string, error) {
 }
 
 func TestCtrlASelectsAll(t *testing.T) {
-	m := newTestModel("hello world")
-
+	m := newTestModel(t, "hello world")
 	msg := tea.KeyPressMsg{
 		Code: 'a',
 		Mod:  tea.ModCtrl,
@@ -68,7 +76,13 @@ func TestCtrlCCopiesSelectionToClipboard(t *testing.T) {
 	e.InsertText("hello world")
 	e.SelectAll()
 
-	m := NewModel(e, clipboard)
+	finder := fileio.NewFileFinder(t.TempDir())
+
+	m := NewModel(
+		e,
+		clipboard,
+		finder,
+	)
 
 	msg := tea.KeyPressMsg{
 		Code: 'c',
@@ -99,7 +113,13 @@ func TestCtrlXDeletesSelection(t *testing.T) {
 	e.InsertText("hello world")
 	e.SelectAll()
 
-	m := NewModel(e, clipboard)
+	finder := fileio.NewFileFinder(t.TempDir())
+
+	m := NewModel(
+		e,
+		clipboard,
+		finder,
+	)
 
 	msg := tea.KeyPressMsg{
 		Code: 'x',
@@ -127,7 +147,7 @@ func TestCtrlXDeletesSelection(t *testing.T) {
 }
 
 func TestCtrlZUndoesEdit(t *testing.T) {
-	m := newTestModel("hello")
+	m := newTestModel(t, "hello")
 
 	msg := tea.KeyPressMsg{
 		Code: 'z',
@@ -156,7 +176,7 @@ func TestCtrlZUndoesEdit(t *testing.T) {
 }
 
 func TestCtrlYRedoesEdit(t *testing.T) {
-	m := newTestModel("hello")
+	m := newTestModel(t, "hello")
 
 	insert := tea.KeyPressMsg{
 		Code: '!',
@@ -188,7 +208,7 @@ func TestCtrlYRedoesEdit(t *testing.T) {
 }
 
 func TestPasteMessageInsertsText(t *testing.T) {
-	m := newTestModel("hello")
+	m := newTestModel(t, "hello")
 
 	msg := tea.PasteMsg{
 		Content: " world",
@@ -203,7 +223,7 @@ func TestPasteMessageInsertsText(t *testing.T) {
 }
 
 func TestMouseWheelDoesNotMoveCursor(t *testing.T) {
-	m := newTestModel("hello")
+	m := newTestModel(t, "hello")
 
 	before := m.editor.Cursor()
 

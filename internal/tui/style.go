@@ -19,7 +19,6 @@ var (
 			Reverse(true)
 
 	messagePanelStyle = lipgloss.NewStyle().
-				BorderTop(true).
 				Padding(0, 1)
 
 	messageInfoStyle = lipgloss.NewStyle()
@@ -32,4 +31,22 @@ var (
 
 	messageErrorStyle = lipgloss.NewStyle().
 				Bold(true)
+
+	searchSeparatorStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("8"))
+
+	searchMatchStyle = lipgloss.NewStyle().
+				Reverse(true)
+
+	searchCurrentMatchStyle = lipgloss.NewStyle().
+				Bold(true).
+				Reverse(true)
+
+	searchResultStyle = lipgloss.NewStyle()
+
+	searchResultSelectedStyle = lipgloss.NewStyle().
+					Reverse(true)
+
+	searchInfoStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("8"))
 )
