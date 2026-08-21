@@ -13,11 +13,14 @@ type Model struct {
 	clipboard clipboard.Clipboard
 
 	viewport Viewport
-	width    int
-	height   int
+
+	width  int
+	height int
+
+	message *Message
 }
 
-// NewModel creates a new TUI model from an editor.
+// NewModel creates a new TUI model from an editor and clipboard backend.
 func NewModel(
 	editor *editor.Editor,
 	clipboard clipboard.Clipboard,

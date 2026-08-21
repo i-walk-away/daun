@@ -11,8 +11,16 @@ func (e *Editor) Insert(r rune) {
 //
 // If text is selected, the selection is replaced by the inserted text.
 // Newline characters create new lines.
+// InsertText inserts text at the current caret position.
+//
+// If text is selected, the selection is replaced by the inserted text.
+// Newline characters create new lines.
 func (e *Editor) InsertText(text string) {
 	text = normalizePaste(text)
+
+	if text == "" {
+		return
+	}
 
 	start := e.cursor
 	end := e.cursor

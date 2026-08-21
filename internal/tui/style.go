@@ -3,12 +3,6 @@ package tui
 import "github.com/charmbracelet/lipgloss"
 
 var (
-	borderStyle = lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder())
-
-	statusBarStyle = lipgloss.NewStyle().
-			Reverse(true)
-
 	lineNumberStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("8"))
 
@@ -20,4 +14,22 @@ var (
 
 	selectionStyle = lipgloss.NewStyle().
 			Reverse(true)
+
+	statusBarStyle = lipgloss.NewStyle().
+			Reverse(true)
+
+	messagePanelStyle = lipgloss.NewStyle().
+				BorderTop(true).
+				Padding(0, 1)
+
+	messageInfoStyle = lipgloss.NewStyle()
+
+	messageSuccessStyle = lipgloss.NewStyle().
+				Bold(true)
+
+	messageWarningStyle = lipgloss.NewStyle().
+				Bold(true)
+
+	messageErrorStyle = lipgloss.NewStyle().
+				Bold(true)
 )

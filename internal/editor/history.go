@@ -13,6 +13,9 @@ type historyEntry struct {
 	afterCursor     Position
 	beforeSelection *Selection
 	afterSelection  *Selection
+
+	beforeRevision uint64
+	afterRevision  uint64
 }
 
 // Undo undoes the most recent editing operation.
@@ -28,9 +31,6 @@ func (e *Editor) Undo() {
 
 	e.undoStack = e.undoStack[:last]
 
-	currentCursor := e.cursor
-	currentSelection := cloneSelection(e.selection)
-
 	end := advancePosition(entry.start, entry.insertedText)
 
 	e.buffer.ReplaceRange(
@@ -43,9 +43,7 @@ func (e *Editor) Undo() {
 
 	e.cursor = entry.beforeCursor
 	e.selection = cloneSelection(entry.beforeSelection)
-
-	entry.beforeCursor = currentCursor
-	entry.beforeSelection = currentSelection
+	e.revision = entry.beforeRevision
 
 	e.redoStack = append(e.redoStack, entry)
 }
@@ -75,18 +73,21 @@ func (e *Editor) Redo() {
 
 	e.cursor = entry.afterCursor
 	e.selection = cloneSelection(entry.afterSelection)
+	e.revision = entry.afterRevision
 
 	e.undoStack = append(e.undoStack, entry)
 }
 
 func (e *Editor) applyEdit(
-	start, end Position,
+	start Position,
+	end Position,
 	replacement string,
 	afterCursor Position,
 	afterSelection *Selection,
 ) {
 	beforeCursor := e.cursor
 	beforeSelection := cloneSelection(e.selection)
+	beforeRevision := e.revision
 
 	deletedText := e.buffer.TextRange(
 		start.Line,
@@ -94,6 +95,12 @@ func (e *Editor) applyEdit(
 		end.Line,
 		end.Column,
 	)
+
+	if deletedText == replacement &&
+		beforeCursor == afterCursor &&
+		sameSelection(beforeSelection, afterSelection) {
+		return
+	}
 
 	e.buffer.ReplaceRange(
 		start.Line,
@@ -103,14 +110,10 @@ func (e *Editor) applyEdit(
 		replacement,
 	)
 
+	e.revision++
+
 	e.cursor = afterCursor
 	e.selection = cloneSelection(afterSelection)
-
-	if deletedText == replacement &&
-		beforeCursor == e.cursor &&
-		sameSelection(beforeSelection, e.selection) {
-		return
-	}
 
 	e.undoStack = append(e.undoStack, historyEntry{
 		start:           start,
@@ -120,6 +123,8 @@ func (e *Editor) applyEdit(
 		afterCursor:     e.cursor,
 		beforeSelection: beforeSelection,
 		afterSelection:  cloneSelection(e.selection),
+		beforeRevision:  beforeRevision,
+		afterRevision:   e.revision,
 	})
 
 	e.redoStack = nil
