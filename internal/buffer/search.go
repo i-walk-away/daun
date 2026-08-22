@@ -218,13 +218,6 @@ func (t *pieceTree) findPreviousBytes(
 	return last, last >= 0
 }
 
-// scanMatches visits every match whose start offset lies in [start, end).
-//
-// The callback may return true to stop the scan.
-//
-// Each piece is searched with bytes.Index. A bounded carry buffer preserves
-// up to len(query)-1 bytes between adjacent pieces, allowing a match to cross
-// a piece boundary without materializing the complete document.
 func (t *pieceTree) scanMatches(
 	start int,
 	end int,
@@ -243,7 +236,11 @@ func (t *pieceTree) scanMatches(
 	}
 
 	carrySize := len(query) - 1
-	carry := make([]byte, 0, carrySize)
+	carry := make([]byte, carrySize)
+
+	// Keep one reusable scratch buffer for the lifetime of the scan.
+	// The previous implementation allocated a new window for every chunk.
+	window := make([]byte, 0, maxLeafPieces*maxPieceBytes+carrySize)
 
 	lastReported := start - 1
 
@@ -255,16 +252,20 @@ func (t *pieceTree) scanMatches(
 				return false
 			}
 
-			window := make([]byte, len(carry)+len(data))
+			windowLen := len(carry) + len(data)
+
+			if cap(window) < windowLen {
+				window = make([]byte, windowLen)
+			} else {
+				window = window[:windowLen]
+			}
 
 			copy(window, carry)
 			copy(window[len(carry):], data)
 
 			baseOffset := chunkStart - len(carry)
 
-			searchAt := 0
-
-			for searchAt < len(window) {
+			for searchAt := 0; searchAt < len(window); {
 				index := bytes.Index(
 					window[searchAt:],
 					query,
@@ -288,23 +289,22 @@ func (t *pieceTree) scanMatches(
 					}
 				}
 
-				// Advance by one byte so overlapping matches are preserved.
+				// Advance by one byte to preserve overlapping matches.
 				searchAt = index + 1
 			}
 
 			if carrySize == 0 {
-				carry = carry[:0]
 				return false
 			}
 
 			if len(window) <= carrySize {
-				carry = append(carry[:0], window...)
+				copy(carry, window)
 				return false
 			}
 
-			carry = append(
-				carry[:0],
-				window[len(window)-carrySize:]...,
+			copy(
+				carry,
+				window[len(window)-carrySize:],
 			)
 
 			return false
