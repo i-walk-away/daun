@@ -49,7 +49,7 @@ func NewFileFinder(root string) *FileFinder {
 // fail the complete search. At most limit results are returned. A
 // non-positive limit returns all matches.
 //
-// Search stops when ctx is cancelled.
+// Search stops when ctx is canceled.
 func (f *FileFinder) Search(
 	ctx context.Context,
 	query string,

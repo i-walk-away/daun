@@ -144,7 +144,7 @@ func TestEditorEnter(t *testing.T) {
 	e.Cursor()
 
 	// Move cursor between "hello" and " world".
-	for i := 0; i < 6; i++ {
+	for range 6 {
 		e.moveLeft()
 	}
 

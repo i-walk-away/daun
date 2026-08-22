@@ -72,7 +72,7 @@ func TestFileFinderSearch(t *testing.T) {
 func TestFileFinderSearchRespectsLimit(t *testing.T) {
 	root := t.TempDir()
 
-	for i := 0; i < 20; i++ {
+	for i := range 20 {
 		path := filepath.Join(
 			root,
 			"file",
@@ -118,7 +118,7 @@ func TestFileFinderSearchRespectsLimit(t *testing.T) {
 func TestFileFinderSearchCanBeCancelled(t *testing.T) {
 	root := t.TempDir()
 
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		path := filepath.Join(
 			root,
 			"file",

@@ -46,12 +46,9 @@ type TextSearchState struct {
 	Total        int
 	Found        bool
 	Wrapped      bool
-
-	generation uint64
-	cancel     context.CancelFunc
 }
 
-// FileSearchState contains file-picker state.
+// FileSearchState contains file-search state.
 type FileSearchState struct {
 	Results []fileio.FileMatch
 
@@ -65,10 +62,9 @@ type FileSearchState struct {
 }
 
 type textSearchResultMsg struct {
-	generation uint64
-	query      string
-	result     editor.SearchResult
-	found      bool
+	query  string
+	result editor.SearchResult
+	found  bool
 }
 
 type fileSearchResultMsg struct {
@@ -78,41 +74,21 @@ type fileSearchResultMsg struct {
 	err        error
 }
 
-func newTextSearchResult(
-	generation uint64,
-	query string,
-	editorModel *editor.Editor,
-	start editor.Position,
-) tea.Cmd {
-	return func() tea.Msg {
-		result, found := editorModel.Search(
-			query,
-			start,
-		)
-
-		return textSearchResultMsg{
-			generation: generation,
-			query:      query,
-			result:     result,
-			found:      found,
-		}
-	}
-}
-
+// openTextSearch opens text search and pre-fills it with the current
+// selection when one exists.
 func (m *Model) openTextSearch() tea.Cmd {
-	m.cancelSearchOperations()
-
-	m.search.Mode = searchModeText
-	m.search.Input.Reset()
-	m.search.Input.Prompt = "/ "
-	m.search.Input.Placeholder = "Search text..."
-	m.search.Input.SetVirtualCursor(false)
+	m.beginSearch(
+		searchModeText,
+		"/ ",
+		"Search text...",
+	)
 
 	m.search.originalCursor = m.editor.Cursor()
 	m.search.text = TextSearchState{}
 
 	if _, _, ok := m.editor.Selection(); ok {
-		if selected, exists := m.editor.SelectedText(); exists {
+		selected, exists := m.editor.SelectedText()
+		if exists {
 			runes := []rune(selected)
 
 			if len(runes) > searchQueryLimit {
@@ -123,29 +99,41 @@ func (m *Model) openTextSearch() tea.Cmd {
 		}
 	}
 
-	m.updateSearchInputWidth()
-	m.clearMessage()
-
 	return m.search.Input.Focus()
 }
 
+// openFileSearch opens the file picker.
 func (m *Model) openFileSearch() tea.Cmd {
-	m.cancelSearchOperations()
-
-	m.search.Mode = searchModeFiles
-	m.search.Input.Reset()
-	m.search.Input.Prompt = "> "
-	m.search.Input.Placeholder = "Find files in home..."
-	m.search.Input.SetVirtualCursor(false)
+	m.beginSearch(
+		searchModeFiles,
+		"> ",
+		"Find files in home...",
+	)
 
 	m.search.files = FileSearchState{}
-
-	m.updateSearchInputWidth()
-	m.clearMessage()
 
 	return nil
 }
 
+// beginSearch resets common search UI state before entering a search mode.
+func (m *Model) beginSearch(
+	mode searchMode,
+	prompt string,
+	placeholder string,
+) {
+	m.cancelSearchOperations()
+
+	m.search.Mode = mode
+	m.search.Input.Reset()
+	m.search.Input.Prompt = prompt
+	m.search.Input.Placeholder = placeholder
+	m.search.Input.SetVirtualCursor(false)
+
+	m.updateSearchInputWidth()
+	m.clearMessage()
+}
+
+// closeSearch closes the search overlay and cancels any running file search.
 func (m *Model) closeSearch() {
 	m.cancelSearchOperations()
 
@@ -157,11 +145,12 @@ func (m *Model) closeSearch() {
 	m.search.files = FileSearchState{}
 }
 
+// handleSearchKey dispatches keyboard input according to the active search
+// mode.
 func (m *Model) handleSearchKey(
 	msg tea.KeyPressMsg,
 ) (tea.Cmd, bool) {
 	ctrl := msg.Mod.Contains(tea.ModCtrl)
-	shift := msg.Mod.Contains(tea.ModShift)
 
 	switch {
 	case ctrl && msg.Code == 'f':
@@ -174,11 +163,25 @@ func (m *Model) handleSearchKey(
 	case msg.Code == tea.KeyEscape:
 		m.closeSearch()
 		return nil, false
+	}
 
-	case m.search.Mode == searchModeText &&
-		msg.Code == tea.KeyEnter:
+	switch m.search.Mode {
+	case searchModeText:
+		return m.handleTextSearchKey(msg)
 
-		if shift {
+	case searchModeFiles:
+		return m.handleFileSearchKey(msg)
+	}
+
+	return nil, false
+}
+
+func (m *Model) handleTextSearchKey(
+	msg tea.KeyPressMsg,
+) (tea.Cmd, bool) {
+	switch msg.Code {
+	case tea.KeyEnter:
+		if msg.Mod.Contains(tea.ModShift) {
 			m.navigateTextSearch(-1)
 		} else {
 			m.acceptTextSearch()
@@ -186,37 +189,54 @@ func (m *Model) handleSearchKey(
 
 		return nil, false
 
-	case m.search.Mode == searchModeText &&
-		msg.Code == tea.KeyUp:
-
+	case tea.KeyUp:
 		m.navigateTextSearch(-1)
 		return nil, false
 
-	case m.search.Mode == searchModeText &&
-		msg.Code == tea.KeyDown:
-
+	case tea.KeyDown:
 		m.navigateTextSearch(1)
 		return nil, false
+	}
 
-	case m.search.Mode == searchModeFiles &&
-		msg.Code == tea.KeyUp:
+	input, cmd := m.search.Input.Update(msg)
+	m.search.Input = input
 
+	return tea.Batch(
+		cmd,
+		m.startTextSearch(),
+	), false
+}
+
+func (m *Model) handleFileSearchKey(
+	msg tea.KeyPressMsg,
+) (tea.Cmd, bool) {
+	switch msg.Code {
+	case tea.KeyUp:
 		m.moveFileSelection(-1)
 		return nil, false
 
-	case m.search.Mode == searchModeFiles &&
-		msg.Code == tea.KeyDown:
-
+	case tea.KeyDown:
 		m.moveFileSelection(1)
 		return nil, false
 
-	case m.search.Mode == searchModeFiles &&
-		msg.Code == tea.KeyEnter:
-
+	case tea.KeyEnter:
 		m.acceptFileSearch()
 		return nil, false
 	}
 
+	input, cmd := m.search.Input.Update(msg)
+	m.search.Input = input
+
+	return tea.Batch(
+		cmd,
+		m.startFileSearch(),
+	), false
+}
+
+// handleSearchPaste inserts terminal paste into the active search input.
+func (m *Model) handleSearchPaste(
+	msg tea.PasteMsg,
+) tea.Cmd {
 	input, cmd := m.search.Input.Update(msg)
 	m.search.Input = input
 
@@ -225,40 +245,24 @@ func (m *Model) handleSearchKey(
 		return tea.Batch(
 			cmd,
 			m.startTextSearch(),
-		), false
+		)
 
 	case searchModeFiles:
 		return tea.Batch(
 			cmd,
 			m.startFileSearch(),
-		), false
-	}
-
-	return cmd, false
-}
-
-func (m *Model) handleSearchPaste(
-	msg tea.PasteMsg,
-) tea.Cmd {
-	input, cmd := m.search.Input.Update(msg)
-	m.search.Input = input
-
-	if m.search.Mode == searchModeText {
-		return tea.Batch(
-			cmd,
-			m.startTextSearch(),
 		)
 	}
 
-	return tea.Batch(
-		cmd,
-		m.startFileSearch(),
-	)
+	return cmd
 }
 
+// startTextSearch starts a text-search operation.
+//
+// Text search is intentionally synchronous with respect to command creation.
+// Bubble Tea executes the returned command independently, while the editor
+// remains unchanged until the result is received.
 func (m *Model) startTextSearch() tea.Cmd {
-	m.cancelTextSearch()
-
 	query := m.search.Input.Value()
 
 	if query == "" {
@@ -266,15 +270,21 @@ func (m *Model) startTextSearch() tea.Cmd {
 		return nil
 	}
 
-	m.search.text.generation++
-	generation := m.search.text.generation
+	start := m.search.originalCursor
+	editorModel := m.editor
 
-	return newTextSearchResult(
-		generation,
-		query,
-		m.editor,
-		m.search.originalCursor,
-	)
+	return func() tea.Msg {
+		result, found := editorModel.Search(
+			query,
+			start,
+		)
+
+		return textSearchResultMsg{
+			query:  query,
+			result: result,
+			found:  found,
+		}
+	}
 }
 
 func (m *Model) handleTextSearchResult(
@@ -284,19 +294,12 @@ func (m *Model) handleTextSearchResult(
 		return
 	}
 
-	if msg.generation != m.search.text.generation {
-		return
-	}
-
 	if msg.query != m.search.Input.Value() {
 		return
 	}
 
 	if !msg.found {
-		m.search.text = TextSearchState{
-			generation: msg.generation,
-		}
-
+		m.search.text = TextSearchState{}
 		return
 	}
 
@@ -319,7 +322,8 @@ func (m *Model) navigateTextSearch(delta int) {
 		found    bool
 	)
 
-	if delta > 0 {
+	switch {
+	case delta > 0:
 		position, found = m.editor.Find(
 			query,
 			m.search.text.Current.End,
@@ -332,10 +336,7 @@ func (m *Model) navigateTextSearch(delta int) {
 			)
 		}
 
-		if !found {
-			return
-		}
-	} else {
+	default:
 		position, found = m.editor.FindPrevious(
 			query,
 			m.search.text.Current.Start,
@@ -344,10 +345,10 @@ func (m *Model) navigateTextSearch(delta int) {
 		if !found {
 			position, found = m.findLastMatch(query)
 		}
+	}
 
-		if !found {
-			return
-		}
+	if !found {
+		return
 	}
 
 	result, found := m.editor.Search(
@@ -363,7 +364,9 @@ func (m *Model) navigateTextSearch(delta int) {
 	m.search.text.Total = result.Total
 	m.search.text.Wrapped = result.Wrapped
 
-	m.scrollCursorIntoView(result.Match.Start)
+	m.scrollCursorIntoView(
+		result.Match.Start,
+	)
 }
 
 func (m *Model) findLastMatch(
@@ -384,6 +387,8 @@ func (m *Model) findLastMatch(
 	)
 }
 
+// acceptTextSearch moves the editor cursor to the end of the current match
+// and closes the search overlay.
 func (m *Model) acceptTextSearch() {
 	if !m.search.text.Found {
 		return
@@ -410,6 +415,7 @@ func (m *Model) startFileSearch() tea.Cmd {
 	}
 
 	m.search.files.generation++
+
 	generation := m.search.files.generation
 
 	ctx, cancel := context.WithCancel(
@@ -518,15 +524,15 @@ func (m *Model) ensureFileSelectionVisible() {
 		m.search.files.ScrollOffset = selected
 	}
 
-	maxVisible := fileVisibleLimit
+	if selected >=
+		m.search.files.ScrollOffset+fileVisibleLimit {
 
-	if selected >= m.search.files.ScrollOffset+maxVisible {
 		m.search.files.ScrollOffset =
-			selected - maxVisible + 1
+			selected - fileVisibleLimit + 1
 	}
 
 	maxOffset := max(
-		len(m.search.files.Results)-maxVisible,
+		len(m.search.files.Results)-fileVisibleLimit,
 		0,
 	)
 
@@ -584,13 +590,6 @@ func (m *Model) scrollCursorIntoView(
 	)
 }
 
-func (m *Model) cancelTextSearch() {
-	if m.search.text.cancel != nil {
-		m.search.text.cancel()
-		m.search.text.cancel = nil
-	}
-}
-
 func (m *Model) cancelFileSearch() {
 	if m.search.files.cancel != nil {
 		m.search.files.cancel()
@@ -601,7 +600,6 @@ func (m *Model) cancelFileSearch() {
 }
 
 func (m *Model) cancelSearchOperations() {
-	m.cancelTextSearch()
 	m.cancelFileSearch()
 }
 
@@ -712,14 +710,10 @@ func (m Model) renderSearchPanel() string {
 			builder.WriteByte('\n')
 
 			style := searchResultStyle
-
-			if i == m.search.files.Selected {
-				style = searchResultSelectedStyle
-			}
-
 			prefix := "  "
 
 			if i == m.search.files.Selected {
+				style = searchResultSelectedStyle
 				prefix = "› "
 			}
 
