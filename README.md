@@ -2,6 +2,46 @@
 
 Daun is a simlple TUI text editor written in Go. I couldn't configure Emacs and decided to make my own thing.
 
+# Features
+
+Daun currently supports:
+
+* Opening existing files from the command line: `daun file.txt`
+* If the requested path does not exist, it creates a file
+* Saving files with Ctrl+S
+* Arrow keys move the cursor one character at a time. Holding Ctrl allows to navigate 1 *word* at a time. Works with
+  selection (shift) too
+* Copy, cut, and paste
+* Undo and redo
+* Search text inside current file with Ctrl+F
+* Pressing Ctrl+F twice invokes a global home directory search by filename. Input a query and daun will find best
+  matching filenames in your ~/ directory
+* If any text is selected before pressing ctrl+f, the current selection will be automatically inputed as the initial
+  search query
+* Unicode-aware cursor positioning and rendering
+
+# Building
+
+Build the binary with:
+
+```bash
+make build
+```
+
+Then execute it:
+
+```bash
+./daun [optional file path]
+```
+
+You can also install it into your local binaries directory:
+
+```bash
+make install
+``` 
+
+The default installation path is `~/.local/bin/daun`. This will allow you to run daun from any directory.
+
 ### Buffer storage
 
 The text itself is stored in the `Buffer`. The buffer uses a piece table backed by a B+ tree as its document storage
@@ -10,14 +50,18 @@ engine.
 The piece table keeps the original document and newly inserted text in append-only storage. The B+ tree indexes pieces
 and maintains aggregate metrics for each subtree, including byte count, rune count, and newline count.
 
-This allows document operations to remain largely independent of the total document size.
+Each tree node maintains aggregate metrics including:
 
-1. Cursor and line lookup use the tree's aggregate metrics instead of scanning the entire document
-2. Insertions and deletions modify only the affected tree path and pieces
-3. Inserted text is stored once and referenced by pieces rather than repeatedly copied
+* byte count
+* rune count
+* newline count
 
-The storage layer is intentionally hidden behind the `Buffer` API, so the editor itself does not depend on the underlying
-data structure. These piece table shenanigans are merely an implementation detail of the `Buffer`.
+These metrics allow the buffer to locate lines and positions without scanning the entire document.
+
+The design also avoids repeatedly copying inserted text, inserted data is stored once and referenced by pieces.
+
+The storage layer is hidden behind the `Buffer` API, so the editor itself does not depend on the underlying data
+structure. These piece table shenanigans are merely an implementation detail of the `Buffer`.
 
 ### Editor model
 
@@ -40,21 +84,6 @@ and horizontal scrolling are independent from the editor's document coordinates.
 Unicode is handled in terms of both **rune positions** and **terminal display width**, so cursor positioning and
 rendering can account for wide characters.
 
-### File handling
-
-Daun can open existing files and create new files if the requested path does not exist:
-
-```bash
-daun filename
-```
-
-Opening a file does not require converting the entire document into one large Go string. File-backed documents are loaded
-into the same `Buffer`
-representation used by in-memory documents, so editing semantics remain identical regardless of how the document was
-opened.
-
-Saving (ctrl + S) is performed through the `fileio` layer.
-
 ### Search
 
 Daun supports two search modes.
@@ -67,20 +96,6 @@ ranks matching paths by filename relevance, and allows the selected result to be
 
 Text search operates over the piece table without materializing the entire document into a contiguous string. File search
 uses `ripgrep` for filesystem enumeration and keeps only a bounded set of ranked results in memory.
-
-### Benchmarks
-
-Daun contains two different kinds of benchmarks.
-
-Microbenchmarks live alongside the storage implementation and are used to measure individual buffer operations and detect
-regressions in the piece table and B+ tree implementation.
-
-Comparative benchmarks are kept separate from the storage microbenchmarks. They are intended to compare Daun against
-other editors under identical workloads, input files, resource limits, and verification conditions.
-
-The goal of the comparative benchmark is not to produce a single universal
-"fastest editor" number. It measures concrete workloads such as opening, navigation, editing, searching, and saving while
-recording wall-clock time, CPU time, and peak resident memory.
 
 ### Clipboard
 
