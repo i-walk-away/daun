@@ -48,7 +48,7 @@ The text itself is stored in the `Buffer`. The buffer uses a piece table backed 
 engine.
 
 The piece table keeps the original document and newly inserted text in append-only storage. The B+ tree indexes pieces
-and maintains aggregate metrics for each subtree, including byte count, rune count, and newline count.
+and maintains aggregate metrics for each subtree.
 
 Each tree node maintains aggregate metrics including:
 
